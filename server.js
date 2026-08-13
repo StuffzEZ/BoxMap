@@ -28,6 +28,7 @@ function redactHeaders(h) {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const IMAGE_RECOGNITION_ENABLED = process.env.IMAGE_RECOGNITION_ENABLED === 'true';
 
@@ -160,7 +161,8 @@ app.post('/api/recognize', upload.single('image'), async (req, res) => {
   const results = [];
 
   try {
-    const uploaded = await Jimp.read(uploadedPath);
+    const fileBuffer = fs.readFileSync(uploadedPath);
+    const uploaded = await Jimp.read(fileBuffer);
     const uploadedHash = uploaded.hash();
 
     const hexToBin = (hex) => {
@@ -196,18 +198,25 @@ app.post('/api/recognize', upload.single('image'), async (req, res) => {
     // Determine matches with a reasonable threshold (lower is better). Threshold 12 is conservative.
     const matches = results.filter(r => r.distance <= 12).slice(0, 10);
 
+    // Encode uploaded image as data URL so we can remove the temp file
+    const dataUrl = `data:${req.file.mimetype};base64,${fileBuffer.toString('base64')}`;
+
+    // Remove the temporary uploaded file immediately
+    try { fs.unlinkSync(uploadedPath); } catch (e) { /* ignore */ }
+
     res.json({
       success: true,
-      imageUrl: `/uploads/images/${req.file.filename}`,
+      imageUrl: dataUrl,
       matches,
       allCandidates: results.slice(0, 20),
       message: matches.length ? 'Possible matches found' : 'No confident matches; showing candidates for manual selection'
     });
   } catch (err) {
     // Fallback to manual listing if hash fails
+    try { fs.unlinkSync(uploadedPath); } catch (e) { /* ignore */ }
     return res.json({ 
       success: true,
-      imageUrl: `/uploads/images/${req.file.filename}`,
+      imageUrl: null,
       items: itemsWithImages,
       message: 'Could not perform automatic matching; select the item that matches this image'
     });
@@ -424,9 +433,10 @@ app.get('/api/labels/pdf', authenticate, async (req, res) => {
       type = 'ITEM';
     }
 
-    // Generate QR code
+    // Generate QR code (encode full app URL so external scanners open the app)
     try {
-      const qrBuffer = await QRCode.toBuffer(id, { width: tmpl.qrSize, margin: 1, color: { dark: '#000000', light: '#FFFFFF' } });
+      const urlToEncode = `${APP_URL.replace(/\/$/, '')}?id=${encodeURIComponent(id)}`;
+      const qrBuffer = await QRCode.toBuffer(urlToEncode, { width: tmpl.qrSize, margin: 1, color: { dark: '#000000', light: '#FFFFFF' } });
       // Draw QR code on left side
       doc.image(qrBuffer, x + 5, y + (tmpl.labelHeight - tmpl.qrSize) / 2, { width: tmpl.qrSize, height: tmpl.qrSize });
     } catch (err) {
@@ -491,6 +501,37 @@ app.get('/api/labels/templates', (req, res) => {
     { id: 'small-3x8', name: 'Small 3x8 (24 labels, compact)' }
   ]);
 });
+
+// Cleanup unreferenced uploaded images older than threshold (seconds)
+function cleanupUploadsOlderThan(seconds = 3600) {
+  try {
+    const files = fs.readdirSync(uploadsDir);
+    // Gather referenced basenames from DB
+    const boxImages = db.prepare('SELECT image FROM boxes WHERE image IS NOT NULL').all().map(r => path.basename(r.image || ''));
+    const itemImages = db.prepare('SELECT image FROM items WHERE image IS NOT NULL').all().map(r => path.basename(r.image || ''));
+    const referenced = new Set([...boxImages, ...itemImages].filter(Boolean));
+
+    for (const f of files) {
+      const full = path.join(uploadsDir, f);
+      try {
+        const stat = fs.statSync(full);
+        const age = (Date.now() - stat.mtimeMs) / 1000;
+        if (!referenced.has(f) && age > seconds) {
+          fs.unlinkSync(full);
+          logger.info('Removed unreferenced upload:', f);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  } catch (e) {
+    logger.warn('cleanupUploads failed', e);
+  }
+}
+
+// Run a cleanup on startup and then periodically (every hour)
+cleanupUploadsOlderThan(3600);
+setInterval(() => cleanupUploadsOlderThan(3600), 1000 * 60 * 60);
 
 // ============ SETTINGS ============
 
