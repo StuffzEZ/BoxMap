@@ -26,9 +26,8 @@
       <button class="btn btn-primary btn-full" onclick="login()">Login</button>
     </div>
 
-    <!-- Dashboard (hidden until logged in) -->
+    <!-- Dashboard -->
     <div id="dashboard" style="display:none">
-      <!-- Stats -->
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-value" id="stat-boxes">0</div>
@@ -44,12 +43,11 @@
         </div>
       </div>
 
-      <!-- Tabs -->
       <div class="tab-bar">
         <button class="btn btn-secondary" onclick="showTab('boxes')" id="tab-boxes">Boxes</button>
         <button class="btn btn-secondary" onclick="showTab('items')" id="tab-items">Items</button>
-        <button class="btn btn-secondary" onclick="showTab('labels')" id="tab-labels">Labels</button>
         <button class="btn btn-secondary" onclick="showTab('units')" id="tab-units">Units</button>
+        <button class="btn btn-secondary" onclick="showTab('labels')" id="tab-labels">Labels</button>
       </div>
 
       <!-- Boxes Tab -->
@@ -61,13 +59,13 @@
         <div class="table-container">
           <table>
             <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Unit</th>
-                        <th>Items</th>
-                        <th>Actions</th>
-                      </tr>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Unit</th>
+                <th>Items</th>
+                <th>Actions</th>
+              </tr>
             </thead>
             <tbody id="boxes-table"></tbody>
           </table>
@@ -87,7 +85,6 @@
                 <th>ID</th>
                 <th>Name</th>
                 <th>Box</th>
-                <th>Unit</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -96,58 +93,6 @@
         </div>
       </div>
 
-      <!-- Labels Tab -->
-      <div class="card" id="panel-labels" style="display:none">
-        <div class="card-title">Generate Labels</div>
-        <div class="form-group">
-          <label>Select IDs (comma separated)</label>
-          <div class="manual-input">
-            <input type="text" id="label-ids" placeholder="BOX1234567890, ITM1234567890">
-            <button type="button" class="btn btn-secondary" onclick="openQuickSelect('label-ids')">Browse</button>
-          </div>
-        </div>
-        <div class="label-controls">
-          <div class="form-group">
-            <label>Label Template</label>
-            <select id="label-template">
-              <option value="dymo-30252">DYMO 30252 (14 labels, with border)</option>
-              <option value="borderless-14">Borderless 14 labels</option>
-              <option value="avery-5160">Avery 5160 (30 labels, no border)</option>
-              <option value="avery-5161">Avery 5161 (40 labels, no border)</option>
-              <option value="avery-5162">Avery 5162 (21 labels, no border)</option>
-              <option value="address-2x8">Address 2x8 (16 labels)</option>
-              <option value="small-3x8">Small 3x8 (24 labels)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Start at index</label>
-            <input type="number" id="label-start" value="0" min="0" max="39">
-          </div>
-          <div class="form-group">
-            <label>Formatting options</label>
-            <div style="display:flex; gap:8px; align-items:center;">
-              <input type="number" id="font-size-name" placeholder="Name size" value="9" style="width:80px">
-              <input type="number" id="font-size-id" placeholder="ID size" value="7" style="width:80px">
-              <input type="number" id="font-size-desc" placeholder="Desc size" value="6" style="width:80px">
-            </div>
-            <div style="margin-top:8px; display:flex; gap:12px; align-items:center;">
-              <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="show-desc" checked> Show description</label>
-              <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="include-image"> Include image</label>
-            </div>
-          </div>
-          <button class="btn btn-primary" onclick="generatePDF()">Generate PDF</button>
-        </div>
-
-        <!-- Quick select -->
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
-          <div class="card-title">Quick Select</div>
-          <div class="quick-actions">
-            <button class="btn btn-secondary" onclick="selectAllBoxes()">All Boxes</button>
-            <button class="btn btn-secondary" onclick="selectAllItems()">All Items</button>
-            <button class="btn btn-secondary" onclick="selectUnassigned()">Unassigned Items</button>
-          </div>
-        </div>
-      </div>
       <!-- Units Tab -->
       <div class="card" id="panel-units" style="display:none">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -166,6 +111,41 @@
             </thead>
             <tbody id="units-table"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Labels Tab -->
+      <div class="card" id="panel-labels" style="display:none">
+        <div class="card-title">Generate Labels</div>
+        <div class="form-group">
+          <label>Select IDs (comma separated)</label>
+          <div class="manual-input">
+            <input type="text" id="label-ids" placeholder="BOX1234567890, ITM1234567890">
+            <button type="button" class="btn btn-secondary" onclick="openQuickSelect('label-ids')">Browse</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Label Template</label>
+          <select id="label-template">
+            <option value="dymo-30252">DYMO 30252 (14 labels, with border)</option>
+            <option value="borderless-14">Borderless 14 labels</option>
+            <option value="avery-5160">Avery 5160 (30 labels, no border)</option>
+            <option value="avery-5161">Avery 5161 (40 labels, no border)</option>
+            <option value="avery-5162">Avery 5162 (21 labels, no border)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Start at index</label>
+          <input type="number" id="label-start" value="0" min="0" max="39">
+        </div>
+        <button class="btn btn-primary btn-full" onclick="generatePDF()">Generate PDF</button>
+        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+          <div class="card-title">Quick Select</div>
+          <div class="quick-actions">
+            <button class="btn btn-secondary" onclick="selectAllBoxes()">All Boxes</button>
+            <button class="btn btn-secondary" onclick="selectAllItems()">All Items</button>
+            <button class="btn btn-secondary" onclick="selectUnassigned()">Unassigned Items</button>
+          </div>
         </div>
       </div>
     </div>
@@ -200,17 +180,14 @@
           <textarea id="box-description" rows="2" placeholder="Description"></textarea>
         </div>
         <div class="form-group">
-          <label>Image</label>
-          <input type="file" id="box-image" accept="image/*" capture="environment">
+          <label>Unit (optional)</label>
+          <select id="box-unit">
+            <option value="">No unit</option>
+          </select>
         </div>
         <div class="form-group">
-          <label>Unit (location)</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <select id="box-unit">
-              <option value="">No unit</option>
-            </select>
-            <button type="button" class="btn btn-secondary" onclick="createUnitPrompt()">+ Unit</button>
-          </div>
+          <label>Image</label>
+          <input type="file" id="box-image" accept="image/*" capture="environment">
         </div>
         <button type="submit" class="btn btn-primary btn-full">Save Box</button>
       </form>
@@ -233,32 +210,6 @@
             <button type="button" class="btn btn-secondary" onclick="generateId('item')">Generate</button>
           </div>
         </div>
-
-          <!-- Unit Modal -->
-          <div class="modal-overlay" id="unit-modal">
-            <div class="modal">
-              <div class="modal-header">
-                <h2 id="unit-modal-title">Add Unit</h2>
-                <button class="modal-close" onclick="closeModal('unit-modal')">&times;</button>
-              </div>
-              <form id="unit-form" onsubmit="saveUnit(event)">
-                <input type="hidden" id="unit-edit-id">
-                <div class="form-group">
-                  <label>Unit ID</label>
-                  <input type="text" id="unit-id" placeholder="UNIT01" required>
-                </div>
-                <div class="form-group">
-                  <label>Name</label>
-                  <input type="text" id="unit-name" placeholder="Shelf A" required>
-                </div>
-                <div class="form-group">
-                  <label>Description</label>
-                  <textarea id="unit-description" rows="2" placeholder="Optional description"></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary btn-full">Save Unit</button>
-              </form>
-            </div>
-          </div>
         <div class="form-group">
           <label>Name</label>
           <input type="text" id="item-name" placeholder="Item name" required>
@@ -274,14 +225,36 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Location</label>
-          <input type="text" id="item-location" placeholder="Shelf A, Drawer 2, etc.">
-        </div>
-        <div class="form-group">
           <label>Image</label>
           <input type="file" id="item-image" accept="image/*" capture="environment">
         </div>
         <button type="submit" class="btn btn-primary btn-full">Save Item</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Unit Modal -->
+  <div class="modal-overlay" id="unit-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="unit-modal-title">Add Unit</h2>
+        <button class="modal-close" onclick="closeModal('unit-modal')">&times;</button>
+      </div>
+      <form id="unit-form" onsubmit="saveUnit(event)">
+        <input type="hidden" id="unit-edit-id">
+        <div class="form-group">
+          <label>Unit ID</label>
+          <input type="text" id="unit-id" placeholder="UNIT01" required>
+        </div>
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" id="unit-name" placeholder="Shelf A" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="unit-description" rows="2" placeholder="Optional description"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Save Unit</button>
       </form>
     </div>
   </div>
@@ -306,6 +279,7 @@
     let password = '';
     let boxes = [];
     let items = [];
+    let units = [];
 
     function login() {
       password = document.getElementById('admin-password').value;
@@ -313,7 +287,6 @@
         showToast('Please enter password', 'error');
         return;
       }
-      
       fetch('/api/stats', {
         headers: { 'X-Admin-Password': password }
       })
@@ -342,82 +315,29 @@
     }
 
     async function loadStats() {
-      const res = await fetch('/api/stats', {
-        headers: { 'X-Admin-Password': password }
-      });
+      const res = await fetch('/api/stats', { headers: { 'X-Admin-Password': password } });
       const data = await res.json();
       document.getElementById('stat-boxes').textContent = data.totalBoxes;
       document.getElementById('stat-items').textContent = data.totalItems;
       document.getElementById('stat-unassigned').textContent = data.unassignedItems;
     }
 
+    async function loadUnits() {
+      const res = await fetch('/api/units', { headers: { 'X-Admin-Password': password } });
+      units = await res.json();
+      renderUnits();
+      updateBoxUnitSelect();
+    }
+
     async function loadBoxes() {
-      const res = await fetch('/api/boxes', {
-        headers: { 'X-Admin-Password': password }
-      });
+      const res = await fetch('/api/boxes', { headers: { 'X-Admin-Password': password } });
       boxes = await res.json();
       renderBoxes();
       updateBoxSelect();
     }
 
-    async function loadUnits() {
-      try {
-        const res = await fetch('/api/units', { headers: { 'X-Admin-Password': password } });
-        if (res.ok) {
-          window.units = await res.json();
-        } else if (res.status === 401) {
-          window.units = [];
-          showToast('Unauthorized - check admin password', 'error');
-        } else {
-          let txt = await res.text().catch(() => 'Failed to load units');
-          window.units = [];
-          showToast(txt || 'Failed to load units', 'error');
-        }
-      } catch (err) {
-        window.units = [];
-        showToast('Network error loading units', 'error');
-        console.error('loadUnits error', err);
-      }
-      updateBoxUnitSelect();
-      renderUnits();
-    }
-
-    function updateBoxUnitSelect() {
-      const sel = document.getElementById('box-unit');
-      if (!sel) return;
-      const cur = sel.value;
-      sel.innerHTML = '<option value="">No unit</option>' + (window.units || []).map(u => `<option value="${u.id}">${u.name} (${u.id})</option>`).join('');
-      sel.value = cur || '';
-    }
-
-    async function createUnitPrompt() {
-      const id = prompt('Enter unit ID (e.g. UNIT01)');
-      if (!id) return;
-      const name = prompt('Enter unit name');
-      if (!name) return;
-      try {
-        const res = await fetch('/api/units', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-          body: JSON.stringify({ id: id.trim().toUpperCase(), name, description: '' })
-        });
-        if (!res.ok) {
-          let errBody = await res.json().catch(() => ({ error: 'Failed to create unit' }));
-          showToast(errBody.error || 'Failed to create unit', 'error');
-          return;
-        }
-        showToast('Unit created', 'success');
-        await loadUnits();
-      } catch (err) {
-        console.error('createUnitPrompt error', err);
-        showToast('Network error creating unit', 'error');
-      }
-    }
-
     async function loadItems() {
-      const res = await fetch('/api/items', {
-        headers: { 'X-Admin-Password': password }
-      });
+      const res = await fetch('/api/items', { headers: { 'X-Admin-Password': password } });
       items = await res.json();
       renderItems();
     }
@@ -425,17 +345,17 @@
     function renderBoxes() {
       const tbody = document.getElementById('boxes-table');
       if (boxes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted)">No boxes yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-muted)">No boxes yet</td></tr>';
         return;
       }
-
       tbody.innerHTML = boxes.map(box => {
         const itemCount = items.filter(i => i.box_id === box.id).length;
+        const unitName = box.unit ? box.unit.name : '-';
         return `
           <tr>
             <td><strong>${box.id}</strong></td>
             <td>${box.name}</td>
-            <td>${box.unit ? box.unit.name + ' (' + box.unit.id + ')' : '<span style="color: var(--text-muted)">-</span>'}</td>
+            <td>${unitName}</td>
             <td>${itemCount}</td>
             <td>
               <button class="btn btn-secondary" onclick="editBox('${box.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
@@ -449,35 +369,58 @@
     function renderItems() {
       const tbody = document.getElementById('items-table');
       if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-muted)">No items yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted)">No items yet</td></tr>';
         return;
       }
-      tbody.innerHTML = items.map(item => {
-        const box = boxes.find(b => b.id === item.box_id);
-        const unitLabel = box && box.unit ? `${box.unit.name} (${box.unit.id})` : '-';
-        return `
+      tbody.innerHTML = items.map(item => `
         <tr>
           <td><strong>${item.id}</strong></td>
           <td>${item.name}</td>
-          <td>${item.box_id || '<span style="color: var(--text-muted)">-</span>'}</td>
-          <td>${unitLabel}</td>
+          <td>${item.box_id || '-'}</td>
           <td>
             <button class="btn btn-secondary" onclick="editItem('${item.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
             <button class="btn btn-danger" onclick="deleteItem('${item.id}')" style="padding: 6px 12px; font-size: 0.8rem">Delete</button>
           </td>
         </tr>
-      `}).join('');
+      `).join('');
+    }
+
+    function renderUnits() {
+      const tbody = document.getElementById('units-table');
+      if (units.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted)">No units yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = units.map(u => `
+        <tr>
+          <td><strong>${u.id}</strong></td>
+          <td>${u.name}</td>
+          <td>${u.description || '-'}</td>
+          <td>
+            <button class="btn btn-secondary" onclick="editUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
+            <button class="btn btn-danger" onclick="deleteUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Delete</button>
+          </td>
+        </tr>
+      `).join('');
     }
 
     function updateBoxSelect() {
       const select = document.getElementById('item-box');
       const current = select.value;
-      select.innerHTML = '<option value="">No box assigned</option>' + 
+      select.innerHTML = '<option value="">No box assigned</option>' +
         boxes.map(b => `<option value="${b.id}">${b.name} (${b.id})</option>`).join('');
       select.value = current;
     }
 
-    // Tab switching
+    function updateBoxUnitSelect() {
+      const select = document.getElementById('box-unit');
+      if (!select) return;
+      const current = select.value;
+      select.innerHTML = '<option value="">No unit</option>' +
+        units.map(u => `<option value="${u.id}">${u.name} (${u.id})</option>`).join('');
+      select.value = current;
+    }
+
     function showTab(tab) {
       document.querySelectorAll('[id^="panel-"]').forEach(p => p.style.display = 'none');
       document.querySelectorAll('[id^="tab-"]').forEach(t => t.classList.remove('btn-primary'));
@@ -491,10 +434,12 @@
       document.getElementById('box-id').value = '';
       document.getElementById('box-name').value = '';
       document.getElementById('box-description').value = '';
+      document.getElementById('box-unit').value = '';
       document.getElementById('box-image').value = '';
       document.getElementById('box-id').disabled = false;
       document.getElementById('box-modal-title').textContent = 'Add Box';
-      
+      updateBoxUnitSelect();
+
       if (editId) {
         const box = boxes.find(b => b.id === editId);
         if (box) {
@@ -503,21 +448,14 @@
           document.getElementById('box-id').disabled = true;
           document.getElementById('box-name').value = box.name;
           document.getElementById('box-description').value = box.description || '';
+          document.getElementById('box-unit').value = box.unit_id || '';
           document.getElementById('box-modal-title').textContent = 'Edit Box';
-          // set unit select if available
-          if (box.unit) {
-            updateBoxUnitSelect();
-            document.getElementById('box-unit').value = box.unit.id;
-          }
         }
       }
-      
       document.getElementById('box-modal').classList.add('active');
     }
 
-    function editBox(id) {
-      openBoxModal(id);
-    }
+    function editBox(id) { openBoxModal(id); }
 
     async function saveBox(e) {
       e.preventDefault();
@@ -525,6 +463,7 @@
       const id = document.getElementById('box-id').value.trim().toUpperCase();
       const name = document.getElementById('box-name').value;
       const description = document.getElementById('box-description').value;
+      const unit_id = document.getElementById('box-unit').value;
       const imageFile = document.getElementById('box-image').files[0];
 
       if (!id.startsWith('BOX')) {
@@ -536,8 +475,7 @@
       formData.append('id', id);
       formData.append('name', name);
       formData.append('description', description);
-      const unit_id = document.getElementById('box-unit')?.value || '';
-      if (unit_id) formData.append('unit_id', unit_id);
+      formData.append('unit_id', unit_id);
       if (imageFile) formData.append('image', imageFile);
 
       const method = editId ? 'PUT' : 'POST';
@@ -553,7 +491,7 @@
       if (data.error) {
         showToast(data.error, 'error');
       } else {
-        showToast('Box saved successfully', 'success');
+        showToast('Box saved', 'success');
         closeModal('box-modal');
         loadDashboard();
       }
@@ -561,12 +499,10 @@
 
     async function deleteBox(id) {
       if (!confirm(`Delete box ${id}? Items will be unassigned.`)) return;
-
       const res = await fetch(`/api/boxes/${id}`, {
         method: 'DELETE',
         headers: { 'X-Admin-Password': password }
       });
-
       const data = await res.json();
       if (data.error) {
         showToast(data.error, 'error');
@@ -583,13 +519,11 @@
       document.getElementById('item-name').value = '';
       document.getElementById('item-description').value = '';
       document.getElementById('item-box').value = '';
-      document.getElementById('item-location').value = '';
       document.getElementById('item-image').value = '';
       document.getElementById('item-id').disabled = false;
       document.getElementById('item-modal-title').textContent = 'Add Item';
-      
       updateBoxSelect();
-      
+
       if (editId) {
         const item = items.find(i => i.id === editId);
         if (item) {
@@ -599,17 +533,13 @@
           document.getElementById('item-name').value = item.name;
           document.getElementById('item-description').value = item.description || '';
           document.getElementById('item-box').value = item.box_id || '';
-          document.getElementById('item-location').value = item.location || '';
           document.getElementById('item-modal-title').textContent = 'Edit Item';
         }
       }
-      
       document.getElementById('item-modal').classList.add('active');
     }
 
-    function editItem(id) {
-      openItemModal(id);
-    }
+    function editItem(id) { openItemModal(id); }
 
     async function saveItem(e) {
       e.preventDefault();
@@ -618,7 +548,6 @@
       const name = document.getElementById('item-name').value;
       const description = document.getElementById('item-description').value;
       const box_id = document.getElementById('item-box').value;
-      const location = document.getElementById('item-location').value;
       const imageFile = document.getElementById('item-image').files[0];
 
       if (!id.startsWith('ITM')) {
@@ -631,7 +560,6 @@
       formData.append('name', name);
       formData.append('description', description);
       formData.append('box_id', box_id);
-      formData.append('location', location);
       if (imageFile) formData.append('image', imageFile);
 
       const method = editId ? 'PUT' : 'POST';
@@ -647,7 +575,7 @@
       if (data.error) {
         showToast(data.error, 'error');
       } else {
-        showToast('Item saved successfully', 'success');
+        showToast('Item saved', 'success');
         closeModal('item-modal');
         loadDashboard();
       }
@@ -655,12 +583,10 @@
 
     async function deleteItem(id) {
       if (!confirm(`Delete item ${id}?`)) return;
-
       const res = await fetch(`/api/items/${id}`, {
         method: 'DELETE',
         headers: { 'X-Admin-Password': password }
       });
-
       const data = await res.json();
       if (data.error) {
         showToast(data.error, 'error');
@@ -670,176 +596,7 @@
       }
     }
 
-    // Modal helpers
-    function closeModal(id) {
-      document.getElementById(id).classList.remove('active');
-    }
-
-    // Label generation
-    function selectAllBoxes() {
-      document.getElementById('label-ids').value = boxes.map(b => b.id).join(', ');
-    }
-
-    function selectAllItems() {
-      document.getElementById('label-ids').value = items.map(i => i.id).join(', ');
-    }
-
-    function selectUnassigned() {
-      const unassigned = items.filter(i => !i.box_id).map(i => i.id).join(', ');
-      document.getElementById('label-ids').value = unassigned || 'No unassigned items';
-    }
-
-    function generatePDF() {
-      const ids = document.getElementById('label-ids').value;
-      const template = document.getElementById('label-template').value;
-      const startIndex = document.getElementById('label-start').value;
-      const fontSizeName = document.getElementById('font-size-name').value;
-      const fontSizeId = document.getElementById('font-size-id').value;
-      const fontSizeDesc = document.getElementById('font-size-desc').value;
-      const showDesc = document.getElementById('show-desc').checked;
-      const includeImage = document.getElementById('include-image').checked;
-
-      if (!ids || ids === 'No unassigned items') {
-        showToast('Please select IDs to generate labels', 'error');
-        return;
-      }
-      const body = {
-        ids,
-        template,
-        start_index: parseInt(startIndex) || 0,
-        fontSizeName: parseInt(fontSizeName) || 9,
-        fontSizeId: parseInt(fontSizeId) || 7,
-        fontSizeDesc: parseInt(fontSizeDesc) || 6,
-        showDescription: !!showDesc,
-        includeImage: !!includeImage
-      };
-
-      fetch('/api/labels/pdf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-Password': password
-        },
-        body: JSON.stringify(body)
-      })
-      .then(async res => {
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          showToast(err.error || 'Failed to generate PDF', 'error');
-          return;
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-      })
-      .catch(() => showToast('Network error generating PDF', 'error'));
-    }
-
-    // Generate ID
-    function generateId(type) {
-      const prefix = type === 'box' ? 'BOX' : 'ITM';
-      const randomNum = Math.floor(1000000000 + Math.random() * 9000000000);
-      const id = prefix + randomNum;
-      
-      if (type === 'box') {
-        document.getElementById('box-id').value = id;
-      } else {
-        document.getElementById('item-id').value = id;
-      }
-    }
-
-    // Quick Select Modal
-    let quickSelectTarget = null;
-
-    function openQuickSelect(target) {
-      quickSelectTarget = target;
-      document.getElementById('quicksearch-input').value = '';
-      renderQuickSelectList();
-      document.getElementById('quickselect-modal').classList.add('active');
-    }
-
-    function renderQuickSelectList(filter = '') {
-      const list = document.getElementById('quickselect-list');
-      const filterLower = filter.toLowerCase();
-
-      const filteredBoxes = boxes.filter(b => 
-        b.name.toLowerCase().includes(filterLower) || b.id.toLowerCase().includes(filterLower)
-      );
-      const filteredItems = items.filter(i => 
-        i.name.toLowerCase().includes(filterLower) || i.id.toLowerCase().includes(filterLower)
-      );
-
-      let html = '';
-
-      if (filteredBoxes.length > 0) {
-        html += '<div style="margin-bottom: 12px"><div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-left: 4px;">Boxes</div>';
-        html += filteredBoxes.map(b => `
-          <div class="item-chip" onclick="selectQuickItem('${b.id}')" style="margin-bottom: 8px; cursor: pointer;">
-            <div class="name">${b.name}</div>
-            <div class="id">${b.id}</div>
-          </div>
-        `).join('');
-        html += '</div>';
-      }
-
-      if (filteredItems.length > 0) {
-        html += '<div><div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-left: 4px;">Items</div>';
-        html += filteredItems.map(i => `
-          <div class="item-chip" onclick="selectQuickItem('${i.id}')" style="margin-bottom: 8px; cursor: pointer;">
-            <div class="name">${i.name}</div>
-            <div class="id">${i.id}${i.box_id ? ' • Box: ' + i.box_id : ''}</div>
-          </div>
-        `).join('');
-        html += '</div>';
-      }
-
-      if (!html) {
-        html = '<p style="text-align: center; color: var(--text-muted); padding: 20px;">No results found</p>';
-      }
-
-      list.innerHTML = html;
-    }
-
-    function filterQuickSelect() {
-      const filter = document.getElementById('quicksearch-input').value;
-      renderQuickSelectList(filter);
-    }
-
-    function selectQuickItem(id) {
-      if (quickSelectTarget === 'label-ids') {
-        const input = document.getElementById('label-ids');
-        const current = input.value.trim();
-        if (current) {
-          input.value = current + ', ' + id;
-        } else {
-          input.value = id;
-        }
-      }
-      closeModal('quickselect-modal');
-    }
-
-    // Units UI
-    function renderUnits() {
-      const tbody = document.getElementById('units-table');
-      const unitsList = window.units || [];
-      if (unitsList.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted)">No units yet</td></tr>';
-        return;
-      }
-      tbody.innerHTML = unitsList.map(u => `
-        <tr>
-          <td><strong>${u.id}</strong></td>
-          <td>${u.name}</td>
-          <td>${u.description || '-'}</td>
-          <td>
-            <button class="btn btn-secondary" onclick="editUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
-            <button class="btn btn-danger" onclick="deleteUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Delete</button>
-          </td>
-        </tr>
-      `).join('');
-    }
-
+    // Unit CRUD
     function openUnitModal(editId = null) {
       document.getElementById('unit-edit-id').value = '';
       document.getElementById('unit-id').value = '';
@@ -849,7 +606,7 @@
       document.getElementById('unit-modal-title').textContent = 'Add Unit';
 
       if (editId) {
-        const u = (window.units || []).find(x => x.id === editId);
+        const u = units.find(x => x.id === editId);
         if (u) {
           document.getElementById('unit-edit-id').value = u.id;
           document.getElementById('unit-id').value = u.id;
@@ -870,52 +627,174 @@
       const id = document.getElementById('unit-id').value.trim().toUpperCase();
       const name = document.getElementById('unit-name').value;
       const description = document.getElementById('unit-description').value;
-      if (!id || !name) { showToast('Unit id and name required', 'error'); return; }
+
+      if (!id || !name) {
+        showToast('ID and name required', 'error');
+        return;
+      }
 
       const url = editId ? `/api/units/${editId}` : '/api/units';
       const method = editId ? 'PUT' : 'POST';
-      try {
-        const res = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-          body: JSON.stringify({ id, name, description })
-        });
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => ({ error: 'Failed to save unit' }));
-          showToast(errBody.error || 'Failed to save unit', 'error');
-          return;
-        }
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+        body: JSON.stringify({ id, name, description })
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+      } else {
         showToast('Unit saved', 'success');
         closeModal('unit-modal');
-        await loadUnits();
-        renderUnits();
-        renderBoxes();
-      } catch (err) {
-        console.error('saveUnit error', err);
-        showToast('Network error saving unit', 'error');
+        loadUnits();
       }
     }
 
     async function deleteUnit(id) {
-      if (!confirm(`Delete unit ${id}? Boxes referencing it will be cleared.`)) return;
-      try {
-        const res = await fetch(`/api/units/${id}`, { method: 'DELETE', headers: { 'X-Admin-Password': password } });
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => ({ error: 'Failed to delete unit' }));
-          showToast(errBody.error || 'Failed to delete unit', 'error');
-          return;
-        }
+      if (!confirm(`Delete unit ${id}? Boxes will be unassigned.`)) return;
+      const res = await fetch(`/api/units/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-Admin-Password': password }
+      });
+      const data = await res.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+      } else {
         showToast('Unit deleted', 'success');
-        await loadUnits();
-        renderUnits();
-        loadBoxes();
-      } catch (err) {
-        console.error('deleteUnit error', err);
-        showToast('Network error deleting unit', 'error');
+        loadUnits();
       }
     }
 
-    // Toast
+    // Modal helpers
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    // Labels
+    function selectAllBoxes() {
+      document.getElementById('label-ids').value = boxes.map(b => b.id).join(', ');
+    }
+
+    function selectAllItems() {
+      document.getElementById('label-ids').value = items.map(i => i.id).join(', ');
+    }
+
+    function selectUnassigned() {
+      const unassigned = items.filter(i => !i.box_id).map(i => i.id).join(', ');
+      document.getElementById('label-ids').value = unassigned || 'No unassigned items';
+    }
+
+    function generatePDF() {
+      const ids = document.getElementById('label-ids').value;
+      const template = document.getElementById('label-template').value;
+      const startIndex = document.getElementById('label-start').value;
+
+      if (!ids || ids === 'No unassigned items') {
+        showToast('Please select IDs', 'error');
+        return;
+      }
+
+      fetch('/api/labels/pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': password
+        },
+        body: JSON.stringify({ ids, template, start_index: parseInt(startIndex) || 0 })
+      })
+      .then(async res => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || 'Failed to generate PDF', 'error');
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      })
+      .catch(() => showToast('Network error', 'error'));
+    }
+
+    // Generate ID
+    function generateId(type) {
+      const prefix = type === 'box' ? 'BOX' : 'ITM';
+      const randomNum = Math.floor(1000000000 + Math.random() * 9000000000);
+      const id = prefix + randomNum;
+      if (type === 'box') {
+        document.getElementById('box-id').value = id;
+      } else {
+        document.getElementById('item-id').value = id;
+      }
+    }
+
+    // Quick Select
+    let quickSelectTarget = null;
+
+    function openQuickSelect(target) {
+      quickSelectTarget = target;
+      document.getElementById('quicksearch-input').value = '';
+      renderQuickSelectList();
+      document.getElementById('quickselect-modal').classList.add('active');
+    }
+
+    function renderQuickSelectList(filter = '') {
+      const list = document.getElementById('quickselect-list');
+      const filterLower = filter.toLowerCase();
+
+      const filteredBoxes = boxes.filter(b =>
+        b.name.toLowerCase().includes(filterLower) || b.id.toLowerCase().includes(filterLower)
+      );
+      const filteredItems = items.filter(i =>
+        i.name.toLowerCase().includes(filterLower) || i.id.toLowerCase().includes(filterLower)
+      );
+
+      let html = '';
+
+      if (filteredBoxes.length > 0) {
+        html += '<div style="margin-bottom: 12px"><div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Boxes</div>';
+        html += filteredBoxes.map(b => `
+          <div class="item-chip" onclick="selectQuickItem('${b.id}')" style="margin-bottom: 8px; cursor: pointer;">
+            <div class="name">${b.name}</div>
+            <div class="id">${b.id}</div>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      if (filteredItems.length > 0) {
+        html += '<div><div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Items</div>';
+        html += filteredItems.map(i => `
+          <div class="item-chip" onclick="selectQuickItem('${i.id}')" style="margin-bottom: 8px; cursor: pointer;">
+            <div class="name">${i.name}</div>
+            <div class="id">${i.id}${i.box_id ? ' - ' + i.box_id : ''}</div>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      if (!html) {
+        html = '<p style="text-align: center; color: var(--text-muted); padding: 20px;">No results</p>';
+      }
+
+      list.innerHTML = html;
+    }
+
+    function filterQuickSelect() {
+      renderQuickSelectList(document.getElementById('quicksearch-input').value);
+    }
+
+    function selectQuickItem(id) {
+      if (quickSelectTarget === 'label-ids') {
+        const input = document.getElementById('label-ids');
+        const current = input.value.trim();
+        input.value = current ? current + ', ' + id : id;
+      }
+      closeModal('quickselect-modal');
+    }
+
     function showToast(message, type = 'success') {
       const toast = document.getElementById('toast');
       toast.textContent = message;
@@ -923,7 +802,6 @@
       setTimeout(() => toast.className = 'toast', 3000);
     }
 
-    // Initialize
     showTab('boxes');
   </script>
 </body>
