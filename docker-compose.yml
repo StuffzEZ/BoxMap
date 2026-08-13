@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   boxmap:
     build: .
@@ -7,10 +5,14 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/app/data
-      - ./uploads:/app/uploads
+      - boxmap-data:/app/data
+      - boxmap-uploads:/app/uploads
     environment:
       - ADMIN_PASSWORD=admin123
       - PORT=3000
       - IMAGE_RECOGNITION_ENABLED=false
     restart: unless-stopped
+
+volumes:
+  boxmap-data:
+  boxmap-uploads:

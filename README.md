@@ -33,8 +33,6 @@ docker run -d \
 Create a `docker-compose.yml`:
 
 ```yaml
-version: '3.8'
-
 services:
   boxmap:
     image: ghcr.io/stuffzez/boxmap:latest
@@ -42,13 +40,17 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/app/data
-      - ./uploads:/app/uploads
+      - boxmap-data:/app/data
+      - boxmap-uploads:/app/uploads
     environment:
       - ADMIN_PASSWORD=yourpassword
       - PORT=3000
       - IMAGE_RECOGNITION_ENABLED=false
     restart: unless-stopped
+
+volumes:
+  boxmap-data:
+  boxmap-uploads:
 ```
 
 Then run:

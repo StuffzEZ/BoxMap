@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f0f0f">
   <title>BoxMap - QR Scanner</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -17,7 +20,7 @@
     <div class="card">
       <div class="card-title">Scan QR Code</div>
       <div class="form-group">
-        <label>Enter QR Code manually</label>
+        <label>Enter QR Code</label>
         <div class="manual-input">
           <input type="text" id="qr-input" placeholder="BOX1234567890 or ITM1234567890">
           <button class="btn btn-primary" onclick="scanQR()">Scan</button>
@@ -25,13 +28,16 @@
       </div>
     </div>
 
-    <!-- Camera Scanner (optional) -->
+    <!-- Quick Select -->
     <div class="card">
-      <div class="card-title">Camera Scanner</div>
-      <div class="scanner-area">
-        <video id="scanner-video" autoplay playsinline></video>
-        <button class="btn btn-primary" id="start-scan-btn" onclick="startCamera()">Start Camera</button>
-        <button class="btn btn-secondary" id="stop-scan-btn" onclick="stopCamera()" style="display:none">Stop Camera</button>
+      <div class="card-title">Quick Select</div>
+      <div class="form-group">
+        <label>Choose a box or item</label>
+        <select id="quick-select" onchange="quickSelect()">
+          <option value="">Select...</option>
+          <optgroup label="Boxes" id="boxes-group"></optgroup>
+          <optgroup label="Items" id="items-group"></optgroup>
+        </select>
       </div>
     </div>
 
@@ -39,8 +45,13 @@
     <div class="card" id="image-recognition-card" style="display:none">
       <div class="card-title">Image Recognition</div>
       <div class="image-upload-area" id="upload-area">
-        <input type="file" id="image-input" accept="image/*" style="display:none" onchange="handleImageUpload(event)">
-        <p>Click to upload an image of an item</p>
+        <input type="file" id="image-input" accept="image/*" capture="environment" style="display:none" onchange="handleImageUpload(event)">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom: 12px; color: var(--text-muted)">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <p>Upload Image or Take Photo</p>
         <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 8px">Items only</p>
       </div>
     </div>
@@ -58,17 +69,53 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    let scanning = false;
-    let videoStream = null;
+    let boxes = [];
+    let items = [];
 
-    // Check if image recognition is enabled
-    fetch('/api/settings')
-      .then(r => r.json())
-      .then(data => {
-        if (data.imageRecognitionEnabled) {
+    // Load data for quick select
+    async function loadData() {
+      try {
+        const [boxesRes, itemsRes, settingsRes] = await Promise.all([
+          fetch('/api/boxes'),
+          fetch('/api/items'),
+          fetch('/api/settings')
+        ]);
+        boxes = await boxesRes.json();
+        items = await itemsRes.json();
+        const settings = await settingsRes.json();
+
+        renderQuickSelect();
+
+        if (settings.imageRecognitionEnabled) {
           document.getElementById('image-recognition-card').style.display = 'block';
         }
-      });
+      } catch (err) {
+        console.error('Error loading data:', err);
+      }
+    }
+
+    function renderQuickSelect() {
+      const boxesGroup = document.getElementById('boxes-group');
+      const itemsGroup = document.getElementById('items-group');
+
+      boxesGroup.innerHTML = boxes.map(b => 
+        `<option value="${b.id}">${b.name} (${b.id})</option>`
+      ).join('');
+
+      itemsGroup.innerHTML = items.map(i => 
+        `<option value="${i.id}">${i.name} (${i.id})</option>`
+      ).join('');
+    }
+
+    function quickSelect() {
+      const select = document.getElementById('quick-select');
+      const id = select.value;
+      if (!id) return;
+
+      document.getElementById('qr-input').value = id;
+      scanQR();
+      select.value = '';
+    }
 
     async function scanQR() {
       const input = document.getElementById('qr-input').value.trim();
@@ -111,7 +158,7 @@
               <h4>Items in this box (${data.items.length})</h4>
               <div class="items-grid">
                 ${data.items.map(item => `
-                  <div class="item-chip">
+                  <div class="item-chip" onclick="document.getElementById('qr-input').value='${item.id}'; scanQR();" style="cursor:pointer">
                     <div class="name">${item.name}</div>
                     <div class="id">${item.id}</div>
                   </div>
@@ -146,38 +193,10 @@
           <div class="detail"><span class="label">Location</span><span class="value">${data.data.location || '-'}</span></div>
           <div class="detail">
             <span class="label">Stored in Box</span>
-            <span class="value">${data.box ? `${data.box.name} (${data.box.id})` : 'Not assigned'}</span>
+            <span class="value">${data.box ? `<span style="cursor:pointer; color:var(--accent)" onclick="document.getElementById('qr-input').value='${data.box.id}'; scanQR();">${data.box.name} (${data.box.id})</span>` : 'Not assigned'}</span>
           </div>
         `;
       }
-    }
-
-    // Camera Scanner
-    async function startCamera() {
-      try {
-        const video = document.getElementById('scanner-video');
-        videoStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' } 
-        });
-        video.srcObject = videoStream;
-        scanning = true;
-        document.getElementById('start-scan-btn').style.display = 'none';
-        document.getElementById('stop-scan-btn').style.display = 'inline-flex';
-        
-        showToast('Camera started. Point at a QR code.', 'success');
-      } catch (err) {
-        showToast('Could not access camera', 'error');
-      }
-    }
-
-    function stopCamera() {
-      if (videoStream) {
-        videoStream.getTracks().forEach(track => track.stop());
-        videoStream = null;
-      }
-      scanning = false;
-      document.getElementById('start-scan-btn').style.display = 'inline-flex';
-      document.getElementById('stop-scan-btn').style.display = 'none';
     }
 
     // Image Recognition
@@ -220,6 +239,9 @@
       toast.className = `toast show ${type}`;
       setTimeout(() => toast.className = 'toast', 3000);
     }
+
+    // Initialize
+    loadData();
   </script>
 </body>
 </html>
