@@ -361,11 +361,22 @@
     }
 
     async function loadUnits() {
-      const res = await fetch('/api/units', { headers: { 'X-Admin-Password': password } });
-      if (res.ok) {
-        window.units = await res.json();
-      } else {
+      try {
+        const res = await fetch('/api/units', { headers: { 'X-Admin-Password': password } });
+        if (res.ok) {
+          window.units = await res.json();
+        } else if (res.status === 401) {
+          window.units = [];
+          showToast('Unauthorized - check admin password', 'error');
+        } else {
+          let txt = await res.text().catch(() => 'Failed to load units');
+          window.units = [];
+          showToast(txt || 'Failed to load units', 'error');
+        }
+      } catch (err) {
         window.units = [];
+        showToast('Network error loading units', 'error');
+        console.error('loadUnits error', err);
       }
       updateBoxUnitSelect();
       renderUnits();
@@ -384,17 +395,22 @@
       if (!id) return;
       const name = prompt('Enter unit name');
       if (!name) return;
-      const res = await fetch('/api/units', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-        body: JSON.stringify({ id: id.trim().toUpperCase(), name, description: '' })
-      });
-      const data = await res.json();
-      if (data.error) {
-        showToast(data.error, 'error');
-      } else {
+      try {
+        const res = await fetch('/api/units', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+          body: JSON.stringify({ id: id.trim().toUpperCase(), name, description: '' })
+        });
+        if (!res.ok) {
+          let errBody = await res.json().catch(() => ({ error: 'Failed to create unit' }));
+          showToast(errBody.error || 'Failed to create unit', 'error');
+          return;
+        }
         showToast('Unit created', 'success');
         await loadUnits();
+      } catch (err) {
+        console.error('createUnitPrompt error', err);
+        showToast('Network error creating unit', 'error');
       }
     }
 
@@ -858,29 +874,45 @@
 
       const url = editId ? `/api/units/${editId}` : '/api/units';
       const method = editId ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-        body: JSON.stringify({ id, name, description })
-      });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || 'Failed to save unit', 'error'); return; }
-      showToast('Unit saved', 'success');
-      closeModal('unit-modal');
-      await loadUnits();
-      renderUnits();
-      renderBoxes();
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+          body: JSON.stringify({ id, name, description })
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ error: 'Failed to save unit' }));
+          showToast(errBody.error || 'Failed to save unit', 'error');
+          return;
+        }
+        showToast('Unit saved', 'success');
+        closeModal('unit-modal');
+        await loadUnits();
+        renderUnits();
+        renderBoxes();
+      } catch (err) {
+        console.error('saveUnit error', err);
+        showToast('Network error saving unit', 'error');
+      }
     }
 
     async function deleteUnit(id) {
       if (!confirm(`Delete unit ${id}? Boxes referencing it will be cleared.`)) return;
-      const res = await fetch(`/api/units/${id}`, { method: 'DELETE', headers: { 'X-Admin-Password': password } });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || 'Failed to delete unit', 'error'); return; }
-      showToast('Unit deleted', 'success');
-      await loadUnits();
-      renderUnits();
-      loadBoxes();
+      try {
+        const res = await fetch(`/api/units/${id}`, { method: 'DELETE', headers: { 'X-Admin-Password': password } });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ error: 'Failed to delete unit' }));
+          showToast(errBody.error || 'Failed to delete unit', 'error');
+          return;
+        }
+        showToast('Unit deleted', 'success');
+        await loadUnits();
+        renderUnits();
+        loadBoxes();
+      } catch (err) {
+        console.error('deleteUnit error', err);
+        showToast('Network error deleting unit', 'error');
+      }
     }
 
     // Toast

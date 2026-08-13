@@ -690,32 +690,47 @@ app.get('/api/units', (req, res) => {
 });
 
 app.post('/api/units', authenticate, (req, res) => {
-  const { id, name, description } = req.body;
-  if (!id || !name) return res.status(400).json({ error: 'id and name required' });
-  const code = id.trim().toUpperCase();
-  const exists = db.prepare('SELECT id FROM units WHERE id = ?').get(code);
-  if (exists) return res.status(400).json({ error: 'Unit id already exists' });
-  db.prepare('INSERT INTO units (id, name, description) VALUES (?, ?, ?)').run(code, name, description || '');
-  res.json({ success: true, id: code });
+  try {
+    const { id, name, description } = req.body;
+    if (!id || !name) return res.status(400).json({ error: 'id and name required' });
+    const code = id.trim().toUpperCase();
+    const exists = db.prepare('SELECT id FROM units WHERE id = ?').get(code);
+    if (exists) return res.status(400).json({ error: 'Unit id already exists' });
+    db.prepare('INSERT INTO units (id, name, description) VALUES (?, ?, ?)').run(code, name, description || '');
+    res.json({ success: true, id: code });
+  } catch (err) {
+    logger.error('Failed to create unit:', err && err.stack ? err.stack : err);
+    res.status(500).json({ error: 'Failed to create unit' });
+  }
 });
 
 app.put('/api/units/:id', authenticate, (req, res) => {
-  const id = req.params.id;
-  const { name, description } = req.body;
-  const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(id);
-  if (!unit) return res.status(404).json({ error: 'Unit not found' });
-  db.prepare('UPDATE units SET name = ?, description = ? WHERE id = ?').run(name || unit.name, description || unit.description, id);
-  res.json({ success: true });
+  try {
+    const id = req.params.id;
+    const { name, description } = req.body;
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(id);
+    if (!unit) return res.status(404).json({ error: 'Unit not found' });
+    db.prepare('UPDATE units SET name = ?, description = ? WHERE id = ?').run(name || unit.name, description || unit.description, id);
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('Failed to update unit:', err && err.stack ? err.stack : err);
+    res.status(500).json({ error: 'Failed to update unit' });
+  }
 });
 
 app.delete('/api/units/:id', authenticate, (req, res) => {
-  const id = req.params.id;
-  const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(id);
-  if (!unit) return res.status(404).json({ error: 'Unit not found' });
-  // clear unit references from boxes
-  db.prepare('UPDATE boxes SET unit_id = NULL WHERE unit_id = ?').run(id);
-  db.prepare('DELETE FROM units WHERE id = ?').run(id);
-  res.json({ success: true });
+  try {
+    const id = req.params.id;
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(id);
+    if (!unit) return res.status(404).json({ error: 'Unit not found' });
+    // clear unit references from boxes
+    db.prepare('UPDATE boxes SET unit_id = NULL WHERE unit_id = ?').run(id);
+    db.prepare('DELETE FROM units WHERE id = ?').run(id);
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('Failed to delete unit:', err && err.stack ? err.stack : err);
+    res.status(500).json({ error: 'Failed to delete unit' });
+  }
 });
 
 // Cleanup unreferenced uploaded images older than threshold (seconds)
