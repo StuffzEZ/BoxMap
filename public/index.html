@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BoxMap - QR Scanner</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>BoxMap</h1>
+      <p>Scan QR codes to find items and boxes</p>
+    </header>
+
+    <!-- Manual QR Input -->
+    <div class="card">
+      <div class="card-title">Scan QR Code</div>
+      <div class="form-group">
+        <label>Enter QR Code manually</label>
+        <div class="manual-input">
+          <input type="text" id="qr-input" placeholder="BOX1234567890 or ITM1234567890">
+          <button class="btn btn-primary" onclick="scanQR()">Scan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camera Scanner (optional) -->
+    <div class="card">
+      <div class="card-title">Camera Scanner</div>
+      <div class="scanner-area">
+        <video id="scanner-video" autoplay playsinline></video>
+        <button class="btn btn-primary" id="start-scan-btn" onclick="startCamera()">Start Camera</button>
+        <button class="btn btn-secondary" id="stop-scan-btn" onclick="stopCamera()" style="display:none">Stop Camera</button>
+      </div>
+    </div>
+
+    <!-- Image Recognition (if enabled) -->
+    <div class="card" id="image-recognition-card" style="display:none">
+      <div class="card-title">Image Recognition</div>
+      <div class="image-upload-area" id="upload-area">
+        <input type="file" id="image-input" accept="image/*" style="display:none" onchange="handleImageUpload(event)">
+        <p>Click to upload an image of an item</p>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 8px">Items only</p>
+      </div>
+    </div>
+
+    <!-- Scan Result -->
+    <div class="card scan-result" id="scan-result">
+      <div id="result-content"></div>
+    </div>
+
+    <nav class="nav-links">
+      <a href="/admin">Admin Panel</a>
+    </nav>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let scanning = false;
+    let videoStream = null;
+
+    // Check if image recognition is enabled
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(data => {
+        if (data.imageRecognitionEnabled) {
+          document.getElementById('image-recognition-card').style.display = 'block';
+        }
+      });
+
+    async function scanQR() {
+      const input = document.getElementById('qr-input').value.trim();
+      if (!input) {
+        showToast('Please enter a QR code', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ qr_code: input })
+        });
+        const data = await res.json();
+        displayResult(data);
+      } catch (err) {
+        showToast('Error scanning QR code', 'error');
+      }
+    }
+
+    function displayResult(data) {
+      const resultDiv = document.getElementById('scan-result');
+      const contentDiv = document.getElementById('result-content');
+
+      if (!data.found) {
+        resultDiv.className = 'card scan-result not-found';
+        contentDiv.innerHTML = `
+          <h3>${data.type.toUpperCase()} Not Found</h3>
+          <p style="color: var(--text-secondary)">No ${data.type} found with ID: ${data.id}</p>
+        `;
+        return;
+      }
+
+      resultDiv.className = 'card scan-result found';
+
+      if (data.type === 'box') {
+        const itemsHtml = data.items && data.items.length > 0 
+          ? `<div class="items-list">
+              <h4>Items in this box (${data.items.length})</h4>
+              <div class="items-grid">
+                ${data.items.map(item => `
+                  <div class="item-chip">
+                    <div class="name">${item.name}</div>
+                    <div class="id">${item.id}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>`
+          : '<p style="color: var(--text-muted); margin-top: 12px">No items in this box</p>';
+
+        contentDiv.innerHTML = `
+          <div class="result-header">
+            ${data.data.image ? `<img src="${data.data.image}" class="result-image" alt="${data.data.name}">` : ''}
+            <div>
+              <h3>Box Found</h3>
+              <p style="color: var(--text-secondary)">${data.data.name}</p>
+            </div>
+          </div>
+          <div class="detail"><span class="label">ID</span><span class="value">${data.data.id}</span></div>
+          <div class="detail"><span class="label">Description</span><span class="value">${data.data.description || '-'}</span></div>
+          ${itemsHtml}
+        `;
+      } else {
+        contentDiv.innerHTML = `
+          <div class="result-header">
+            ${data.data.image ? `<img src="${data.data.image}" class="result-image" alt="${data.data.name}">` : ''}
+            <div>
+              <h3>Item Found</h3>
+              <p style="color: var(--text-secondary)">${data.data.name}</p>
+            </div>
+          </div>
+          <div class="detail"><span class="label">ID</span><span class="value">${data.data.id}</span></div>
+          <div class="detail"><span class="label">Description</span><span class="value">${data.data.description || '-'}</span></div>
+          <div class="detail"><span class="label">Location</span><span class="value">${data.data.location || '-'}</span></div>
+          <div class="detail">
+            <span class="label">Stored in Box</span>
+            <span class="value">${data.box ? `${data.box.name} (${data.box.id})` : 'Not assigned'}</span>
+          </div>
+        `;
+      }
+    }
+
+    // Camera Scanner
+    async function startCamera() {
+      try {
+        const video = document.getElementById('scanner-video');
+        videoStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        video.srcObject = videoStream;
+        scanning = true;
+        document.getElementById('start-scan-btn').style.display = 'none';
+        document.getElementById('stop-scan-btn').style.display = 'inline-flex';
+        
+        showToast('Camera started. Point at a QR code.', 'success');
+      } catch (err) {
+        showToast('Could not access camera', 'error');
+      }
+    }
+
+    function stopCamera() {
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+        videoStream = null;
+      }
+      scanning = false;
+      document.getElementById('start-scan-btn').style.display = 'inline-flex';
+      document.getElementById('stop-scan-btn').style.display = 'none';
+    }
+
+    // Image Recognition
+    function handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      fetch('/api/recognize', {
+        method: 'POST',
+        body: formData
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          showToast(data.error, 'error');
+        } else {
+          showToast('Image uploaded successfully', 'success');
+        }
+      })
+      .catch(err => {
+        showToast('Error uploading image', 'error');
+      });
+    }
+
+    document.getElementById('upload-area')?.addEventListener('click', () => {
+      document.getElementById('image-input').click();
+    });
+
+    // Enter key to scan
+    document.getElementById('qr-input')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') scanQR();
+    });
+
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `toast show ${type}`;
+      setTimeout(() => toast.className = 'toast', 3000);
+    }
+  </script>
+</body>
+</html>

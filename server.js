@@ -1,0 +1,435 @@
+const express = require('express');
+const Database = require('better-sqlite3');
+const multer = require('multer');
+const PDFDocument = require('pdfkit');
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const IMAGE_RECOGNITION_ENABLED = process.env.IMAGE_RECOGNITION_ENABLED === 'true';
+
+// Ensure directories exist
+const dataDir = path.join(__dirname, 'data');
+const uploadsDir = path.join(__dirname, 'uploads', 'images');
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+// Database setup
+const db = new Database(path.join(dataDir, 'boxmap.db'));
+db.pragma('journal_mode = WAL');
+
+// Create tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS boxes (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    image TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS items (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    box_id TEXT,
+    image TEXT,
+    location TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (box_id) REFERENCES boxes(id) ON DELETE SET NULL
+  );
+`);
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+
+// Auth middleware
+const authenticate = (req, res, next) => {
+  const password = req.headers['x-admin-password'] || req.query.password;
+  if (password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+};
+
+// ============ API ROUTES ============
+
+// Scan QR code
+app.post('/api/scan', (req, res) => {
+  const { qr_code } = req.body;
+  if (!qr_code) {
+    return res.status(400).json({ error: 'QR code is required' });
+  }
+
+  const code = qr_code.trim().toUpperCase();
+
+  if (code.startsWith('BOX')) {
+    const box = db.prepare('SELECT * FROM boxes WHERE id = ?').get(code);
+    if (!box) {
+      return res.json({ type: 'box', found: false, id: code });
+    }
+    const items = db.prepare('SELECT * FROM items WHERE box_id = ?').all(code);
+    return res.json({ type: 'box', found: true, data: box, items });
+  }
+
+  if (code.startsWith('ITM')) {
+    const item = db.prepare('SELECT * FROM items WHERE id = ?').get(code);
+    if (!item) {
+      return res.json({ type: 'item', found: false, id: code });
+    }
+    const box = item.box_id ? db.prepare('SELECT * FROM boxes WHERE id = ?').get(item.box_id) : null;
+    return res.json({ type: 'item', found: true, data: item, box });
+  }
+
+  return res.status(400).json({ error: 'Invalid QR code format. Must start with BOX or ITM' });
+});
+
+// Image recognition endpoint
+app.post('/api/recognize', upload.single('image'), (req, res) => {
+  if (!IMAGE_RECOGNITION_ENABLED) {
+    return res.status(400).json({ error: 'Image recognition is disabled' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'Image is required' });
+  }
+
+  // Placeholder for image recognition - in production, integrate with a real service
+  res.json({ 
+    message: 'Image recognition is a placeholder. Integrate with a real service like Google Vision or AWS Rekognition.',
+    imageUrl: `/uploads/images/${req.file.filename}`
+  });
+});
+
+// ============ BOXES CRUD ============
+
+app.get('/api/boxes', (req, res) => {
+  const boxes = db.prepare('SELECT * FROM boxes ORDER BY created_at DESC').all();
+  res.json(boxes);
+});
+
+app.get('/api/boxes/:id', (req, res) => {
+  const box = db.prepare('SELECT * FROM boxes WHERE id = ?').get(req.params.id);
+  if (!box) return res.status(404).json({ error: 'Box not found' });
+  const items = db.prepare('SELECT * FROM items WHERE box_id = ?').all(req.params.id);
+  res.json({ ...box, items });
+});
+
+app.post('/api/boxes', authenticate, upload.single('image'), (req, res) => {
+  const { id, name, description } = req.body;
+  if (!id || !name) {
+    return res.status(400).json({ error: 'ID and name are required' });
+  }
+
+  const code = id.trim().toUpperCase();
+  if (!code.startsWith('BOX')) {
+    return res.status(400).json({ error: 'Box ID must start with BOX' });
+  }
+
+  const existing = db.prepare('SELECT id FROM boxes WHERE id = ?').get(code);
+  if (existing) {
+    return res.status(400).json({ error: 'Box ID already exists' });
+  }
+
+  const image = req.file ? `/uploads/images/${req.file.filename}` : null;
+
+  db.prepare('INSERT INTO boxes (id, name, description, image) VALUES (?, ?, ?, ?)')
+    .run(code, name, description || '', image);
+
+  res.json({ success: true, id: code });
+});
+
+app.put('/api/boxes/:id', authenticate, upload.single('image'), (req, res) => {
+  const { name, description } = req.body;
+  const box = db.prepare('SELECT * FROM boxes WHERE id = ?').get(req.params.id);
+  if (!box) return res.status(404).json({ error: 'Box not found' });
+
+  const image = req.file ? `/uploads/images/${req.file.filename}` : box.image;
+
+  db.prepare('UPDATE boxes SET name = ?, description = ?, image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    .run(name || box.name, description || box.description, image, req.params.id);
+
+  res.json({ success: true });
+});
+
+app.delete('/api/boxes/:id', authenticate, (req, res) => {
+  const box = db.prepare('SELECT * FROM boxes WHERE id = ?').get(req.params.id);
+  if (!box) return res.status(404).json({ error: 'Box not found' });
+
+  db.prepare('UPDATE items SET box_id = NULL WHERE box_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM boxes WHERE id = ?').run(req.params.id);
+
+  if (box.image) {
+    const imgPath = path.join(__dirname, box.image);
+    if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+  }
+
+  res.json({ success: true });
+});
+
+// ============ ITEMS CRUD ============
+
+app.get('/api/items', (req, res) => {
+  const items = db.prepare('SELECT * FROM items ORDER BY created_at DESC').all();
+  res.json(items);
+});
+
+app.get('/api/items/:id', (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  const box = item.box_id ? db.prepare('SELECT * FROM boxes WHERE id = ?').get(item.box_id) : null;
+  res.json({ ...item, box });
+});
+
+app.post('/api/items', authenticate, upload.single('image'), (req, res) => {
+  const { id, name, description, box_id, location } = req.body;
+  if (!id || !name) {
+    return res.status(400).json({ error: 'ID and name are required' });
+  }
+
+  const code = id.trim().toUpperCase();
+  if (!code.startsWith('ITM')) {
+    return res.status(400).json({ error: 'Item ID must start with ITM' });
+  }
+
+  const existing = db.prepare('SELECT id FROM items WHERE id = ?').get(code);
+  if (existing) {
+    return res.status(400).json({ error: 'Item ID already exists' });
+  }
+
+  if (box_id) {
+    const box = db.prepare('SELECT id FROM boxes WHERE id = ?').get(box_id);
+    if (!box) return res.status(400).json({ error: 'Box not found' });
+  }
+
+  const image = req.file ? `/uploads/images/${req.file.filename}` : null;
+
+  db.prepare('INSERT INTO items (id, name, description, box_id, image, location) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(code, name, description || '', box_id || null, image, location || '');
+
+  res.json({ success: true, id: code });
+});
+
+app.put('/api/items/:id', authenticate, upload.single('image'), (req, res) => {
+  const { name, description, box_id, location } = req.body;
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+
+  if (box_id) {
+    const box = db.prepare('SELECT id FROM boxes WHERE id = ?').get(box_id);
+    if (!box) return res.status(400).json({ error: 'Box not found' });
+  }
+
+  const image = req.file ? `/uploads/images/${req.file.filename}` : item.image;
+
+  db.prepare('UPDATE items SET name = ?, description = ?, box_id = ?, image = ?, location = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    .run(name || item.name, description || item.description, box_id || item.box_id, image, location || item.location, req.params.id);
+
+  res.json({ success: true });
+});
+
+app.delete('/api/items/:id', authenticate, (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+
+  db.prepare('DELETE FROM items WHERE id = ?').run(req.params.id);
+
+  if (item.image) {
+    const imgPath = path.join(__dirname, item.image);
+    if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+  }
+
+  res.json({ success: true });
+});
+
+// ============ PDF LABEL GENERATION ============
+
+app.get('/api/labels/pdf', authenticate, (req, res) => {
+  const { ids, template, start_index } = req.query;
+  
+  if (!ids) {
+    return res.status(400).json({ error: 'IDs are required' });
+  }
+
+  const idList = ids.split(',').map(id => id.trim().toUpperCase());
+  
+  // Template configurations (Avery 5160 compatible - 30 labels per sheet, 3 columns x 10 rows)
+  const templates = {
+    'avery-5160': {
+      width: 612, height: 792,
+      labelsPerSheet: 30,
+      cols: 3, rows: 10,
+      labelWidth: 180, labelHeight: 54,
+      marginLeft: 18, marginTop: 36,
+      colGap: 9, rowGap: 0,
+      hasBorder: false
+    },
+    'avery-5161': {
+      width: 612, height: 792,
+      labelsPerSheet: 40,
+      cols: 4, rows: 10,
+      labelWidth: 136, labelHeight: 54,
+      marginLeft: 18, marginTop: 36,
+      colGap: 9, rowGap: 0,
+      hasBorder: false
+    },
+    'avery-5162': {
+      width: 612, height: 792,
+      labelsPerSheet: 21,
+      cols: 3, rows: 7,
+      labelWidth: 180, labelHeight: 72,
+      marginLeft: 18, marginTop: 54,
+      colGap: 9, rowGap: 18,
+      hasBorder: false
+    },
+    'dymo-30252': {
+      width: 612, height: 792,
+      labelsPerSheet: 14,
+      cols: 2, rows: 7,
+      labelWidth: 252, labelHeight: 72,
+      marginLeft: 72, marginTop: 36,
+      colGap: 36, rowGap: 18,
+      hasBorder: true
+    },
+    'borderless-14': {
+      width: 612, height: 792,
+      labelsPerSheet: 14,
+      cols: 2, rows: 7,
+      labelWidth: 270, labelHeight: 72,
+      marginLeft: 36, marginTop: 36,
+      colGap: 18, rowGap: 18,
+      hasBorder: false
+    }
+  };
+
+  const tmpl = templates[template] || templates['dymo-30252'];
+  const startIndex = parseInt(start_index) || 0;
+
+  const doc = new PDFDocument({
+    size: [tmpl.width, tmpl.height],
+    margin: 0
+  });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename=labels.pdf');
+  doc.pipe(res);
+
+  let labelIndex = 0;
+
+  idList.forEach(id => {
+    if (labelIndex >= tmpl.labelsPerSheet) return;
+
+    const col = labelIndex % tmpl.cols;
+    const row = Math.floor(labelIndex / tmpl.cols);
+    
+    const x = tmpl.marginLeft + col * (tmpl.labelWidth + tmpl.colGap);
+    const y = tmpl.marginTop + row * (tmpl.labelHeight + tmpl.rowGap);
+
+    if (tmpl.hasBorder) {
+      doc.rect(x, y, tmpl.labelWidth, tmpl.labelHeight).stroke();
+    }
+
+    // Get data
+    let data = null;
+    let type = '';
+    if (id.startsWith('BOX')) {
+      data = db.prepare('SELECT * FROM boxes WHERE id = ?').get(id);
+      type = 'BOX';
+    } else if (id.startsWith('ITM')) {
+      data = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+      type = 'ITEM';
+    }
+
+    if (data) {
+      // QR code placeholder (left side)
+      doc.fontSize(8).font('Helvetica-Bold');
+      doc.text(type, x + 5, y + 5, { width: 40 });
+      doc.fontSize(6).font('Helvetica');
+      doc.text(id, x + 5, y + 18, { width: 40 });
+
+      // Info (right side)
+      doc.fontSize(7).font('Helvetica-Bold');
+      doc.text(data.name, x + 50, y + 5, { width: tmpl.labelWidth - 55 });
+      doc.fontSize(5).font('Helvetica');
+      doc.text(data.description || '', x + 50, y + 18, { width: tmpl.labelWidth - 55 });
+      
+      if (type === 'ITEM' && data.location) {
+        doc.text(`Location: ${data.location}`, x + 50, y + 32, { width: tmpl.labelWidth - 55 });
+      }
+    } else {
+      doc.fontSize(8).font('Helvetica');
+      doc.text(id, x + 5, y + 5, { width: tmpl.labelWidth - 10 });
+    }
+
+    labelIndex++;
+  });
+
+  doc.end();
+});
+
+// Get label template options
+app.get('/api/labels/templates', (req, res) => {
+  res.json([
+    { id: 'avery-5160', name: 'Avery 5160 (30 labels, no border)' },
+    { id: 'avery-5161', name: 'Avery 5161 (40 labels, no border)' },
+    { id: 'avery-5162', name: 'Avery 5162 (21 labels, no border)' },
+    { id: 'dymo-30252', name: 'DYMO 30252 (14 labels, with border)' },
+    { id: 'borderless-14', name: 'Borderless 14 labels' }
+  ]);
+});
+
+// ============ SETTINGS ============
+
+app.get('/api/settings', (req, res) => {
+  res.json({
+    imageRecognitionEnabled: IMAGE_RECOGNITION_ENABLED
+  });
+});
+
+// ============ STATS ============
+
+app.get('/api/stats', (req, res) => {
+  const boxes = db.prepare('SELECT COUNT(*) as count FROM boxes').get();
+  const items = db.prepare('SELECT COUNT(*) as count FROM items').get();
+  const unassigned = db.prepare('SELECT COUNT(*) as count FROM items WHERE box_id IS NULL').get();
+  
+  res.json({
+    totalBoxes: boxes.count,
+    totalItems: items.count,
+    unassignedItems: unassigned.count
+  });
+});
+
+// Serve HTML pages
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`BoxMap running on http://localhost:${PORT}`);
+  console.log(`Admin panel: http://localhost:${PORT}/admin`);
+  console.log(`Image recognition: ${IMAGE_RECOGNITION_ENABLED ? 'ENABLED' : 'DISABLED'}`);
+});

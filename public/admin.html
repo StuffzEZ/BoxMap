@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BoxMap - Admin Panel</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>BoxMap Admin</h1>
+      <p>Manage boxes, items, and labels</p>
+    </header>
+
+    <!-- Login -->
+    <div class="card" id="login-card">
+      <div class="card-title">Admin Login</div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="admin-password" placeholder="Enter admin password">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="login()">Login</button>
+    </div>
+
+    <!-- Dashboard (hidden until logged in) -->
+    <div id="dashboard" style="display:none">
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-boxes">0</div>
+          <div class="stat-label">Boxes</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-items">0</div>
+          <div class="stat-label">Items</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-unassigned">0</div>
+          <div class="stat-label">Unassigned</div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+        <button class="btn btn-secondary" onclick="showTab('boxes')" id="tab-boxes">Boxes</button>
+        <button class="btn btn-secondary" onclick="showTab('items')" id="tab-items">Items</button>
+        <button class="btn btn-secondary" onclick="showTab('labels')" id="tab-labels">Labels</button>
+      </div>
+
+      <!-- Boxes Tab -->
+      <div class="card" id="panel-boxes">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div class="card-title" style="margin-bottom: 0">Boxes</div>
+          <button class="btn btn-primary" onclick="openBoxModal()">+ Add Box</button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Items</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="boxes-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Items Tab -->
+      <div class="card" id="panel-items" style="display:none">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div class="card-title" style="margin-bottom: 0">Items</div>
+          <button class="btn btn-primary" onclick="openItemModal()">+ Add Item</button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Box</th>
+                <th>Location</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="items-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Labels Tab -->
+      <div class="card" id="panel-labels" style="display:none">
+        <div class="card-title">Generate Labels</div>
+        <div class="form-group">
+          <label>Select IDs (comma separated)</label>
+          <input type="text" id="label-ids" placeholder="BOX1234567890, ITM1234567890">
+        </div>
+        <div class="label-controls">
+          <div class="form-group">
+            <label>Label Template</label>
+            <select id="label-template">
+              <option value="dymo-30252">DYMO 30252 (14 labels, with border)</option>
+              <option value="borderless-14">Borderless 14 labels</option>
+              <option value="avery-5160">Avery 5160 (30 labels, no border)</option>
+              <option value="avery-5161">Avery 5161 (40 labels, no border)</option>
+              <option value="avery-5162">Avery 5162 (21 labels, no border)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Start at index</label>
+            <input type="number" id="label-start" value="0" min="0" max="39">
+          </div>
+          <button class="btn btn-primary" onclick="generatePDF()">Generate PDF</button>
+        </div>
+
+        <!-- Quick select -->
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <div class="card-title">Quick Select</div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" onclick="selectAllBoxes()">All Boxes</button>
+            <button class="btn btn-secondary" onclick="selectAllItems()">All Items</button>
+            <button class="btn btn-secondary" onclick="selectUnassigned()">Unassigned Items</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="nav-links" style="margin-top: 30px;">
+      <a href="/">Back to Scanner</a>
+    </nav>
+  </div>
+
+  <!-- Box Modal -->
+  <div class="modal-overlay" id="box-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="box-modal-title">Add Box</h2>
+        <button class="modal-close" onclick="closeModal('box-modal')">&times;</button>
+      </div>
+      <form id="box-form" onsubmit="saveBox(event)">
+        <input type="hidden" id="box-edit-id">
+        <div class="form-group">
+          <label>Box ID (must start with BOX)</label>
+          <input type="text" id="box-id" placeholder="BOX1234567890" required>
+        </div>
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" id="box-name" placeholder="Box name" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="box-description" rows="2" placeholder="Description"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Image</label>
+          <input type="file" id="box-image" accept="image/*">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Save Box</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Item Modal -->
+  <div class="modal-overlay" id="item-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="item-modal-title">Add Item</h2>
+        <button class="modal-close" onclick="closeModal('item-modal')">&times;</button>
+      </div>
+      <form id="item-form" onsubmit="saveItem(event)">
+        <input type="hidden" id="item-edit-id">
+        <div class="form-group">
+          <label>Item ID (must start with ITM)</label>
+          <input type="text" id="item-id" placeholder="ITM1234567890" required>
+        </div>
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" id="item-name" placeholder="Item name" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="item-description" rows="2" placeholder="Description"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Box (optional)</label>
+          <select id="item-box">
+            <option value="">No box assigned</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" id="item-location" placeholder="Shelf A, Drawer 2, etc.">
+        </div>
+        <div class="form-group">
+          <label>Image</label>
+          <input type="file" id="item-image" accept="image/*">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Save Item</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let password = '';
+    let boxes = [];
+    let items = [];
+
+    function login() {
+      password = document.getElementById('admin-password').value;
+      if (!password) {
+        showToast('Please enter password', 'error');
+        return;
+      }
+      
+      fetch('/api/stats', {
+        headers: { 'X-Admin-Password': password }
+      })
+      .then(r => {
+        if (r.status === 401) {
+          showToast('Invalid password', 'error');
+          return null;
+        }
+        return r.json();
+      })
+      .then(data => {
+        if (data) {
+          document.getElementById('login-card').style.display = 'none';
+          document.getElementById('dashboard').style.display = 'block';
+          loadDashboard();
+        }
+      });
+    }
+
+    document.getElementById('admin-password')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') login();
+    });
+
+    async function loadDashboard() {
+      await Promise.all([loadStats(), loadBoxes(), loadItems()]);
+    }
+
+    async function loadStats() {
+      const res = await fetch('/api/stats', {
+        headers: { 'X-Admin-Password': password }
+      });
+      const data = await res.json();
+      document.getElementById('stat-boxes').textContent = data.totalBoxes;
+      document.getElementById('stat-items').textContent = data.totalItems;
+      document.getElementById('stat-unassigned').textContent = data.unassignedItems;
+    }
+
+    async function loadBoxes() {
+      const res = await fetch('/api/boxes', {
+        headers: { 'X-Admin-Password': password }
+      });
+      boxes = await res.json();
+      renderBoxes();
+      updateBoxSelect();
+    }
+
+    async function loadItems() {
+      const res = await fetch('/api/items', {
+        headers: { 'X-Admin-Password': password }
+      });
+      items = await res.json();
+      renderItems();
+    }
+
+    function renderBoxes() {
+      const tbody = document.getElementById('boxes-table');
+      if (boxes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted)">No boxes yet</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = boxes.map(box => {
+        const itemCount = items.filter(i => i.box_id === box.id).length;
+        return `
+          <tr>
+            <td><strong>${box.id}</strong></td>
+            <td>${box.name}</td>
+            <td>${itemCount}</td>
+            <td>
+              <button class="btn btn-secondary" onclick="editBox('${box.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
+              <button class="btn btn-danger" onclick="deleteBox('${box.id}')" style="padding: 6px 12px; font-size: 0.8rem">Delete</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderItems() {
+      const tbody = document.getElementById('items-table');
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-muted)">No items yet</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = items.map(item => `
+        <tr>
+          <td><strong>${item.id}</strong></td>
+          <td>${item.name}</td>
+          <td>${item.box_id || '<span style="color: var(--text-muted)">-</span>'}</td>
+          <td>${item.location || '-'}</td>
+          <td>
+            <button class="btn btn-secondary" onclick="editItem('${item.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
+            <button class="btn btn-danger" onclick="deleteItem('${item.id}')" style="padding: 6px 12px; font-size: 0.8rem">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function updateBoxSelect() {
+      const select = document.getElementById('item-box');
+      const current = select.value;
+      select.innerHTML = '<option value="">No box assigned</option>' + 
+        boxes.map(b => `<option value="${b.id}">${b.name} (${b.id})</option>`).join('');
+      select.value = current;
+    }
+
+    // Tab switching
+    function showTab(tab) {
+      document.querySelectorAll('[id^="panel-"]').forEach(p => p.style.display = 'none');
+      document.querySelectorAll('[id^="tab-"]').forEach(t => t.classList.remove('btn-primary'));
+      document.getElementById(`panel-${tab}`).style.display = 'block';
+      document.getElementById(`tab-${tab}`).classList.add('btn-primary');
+    }
+
+    // Box CRUD
+    function openBoxModal(editId = null) {
+      document.getElementById('box-edit-id').value = '';
+      document.getElementById('box-id').value = '';
+      document.getElementById('box-name').value = '';
+      document.getElementById('box-description').value = '';
+      document.getElementById('box-image').value = '';
+      document.getElementById('box-id').disabled = false;
+      document.getElementById('box-modal-title').textContent = 'Add Box';
+      
+      if (editId) {
+        const box = boxes.find(b => b.id === editId);
+        if (box) {
+          document.getElementById('box-edit-id').value = box.id;
+          document.getElementById('box-id').value = box.id;
+          document.getElementById('box-id').disabled = true;
+          document.getElementById('box-name').value = box.name;
+          document.getElementById('box-description').value = box.description || '';
+          document.getElementById('box-modal-title').textContent = 'Edit Box';
+        }
+      }
+      
+      document.getElementById('box-modal').classList.add('active');
+    }
+
+    function editBox(id) {
+      openBoxModal(id);
+    }
+
+    async function saveBox(e) {
+      e.preventDefault();
+      const editId = document.getElementById('box-edit-id').value;
+      const id = document.getElementById('box-id').value.trim().toUpperCase();
+      const name = document.getElementById('box-name').value;
+      const description = document.getElementById('box-description').value;
+      const imageFile = document.getElementById('box-image').files[0];
+
+      if (!id.startsWith('BOX')) {
+        showToast('Box ID must start with BOX', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('id', id);
+      formData.append('name', name);
+      formData.append('description', description);
+      if (imageFile) formData.append('image', imageFile);
+
+      const method = editId ? 'PUT' : 'POST';
+      const url = editId ? `/api/boxes/${editId}` : '/api/boxes';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'X-Admin-Password': password },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+      } else {
+        showToast('Box saved successfully', 'success');
+        closeModal('box-modal');
+        loadDashboard();
+      }
+    }
+
+    async function deleteBox(id) {
+      if (!confirm(`Delete box ${id}? Items will be unassigned.`)) return;
+
+      const res = await fetch(`/api/boxes/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-Admin-Password': password }
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+      } else {
+        showToast('Box deleted', 'success');
+        loadDashboard();
+      }
+    }
+
+    // Item CRUD
+    function openItemModal(editId = null) {
+      document.getElementById('item-edit-id').value = '';
+      document.getElementById('item-id').value = '';
+      document.getElementById('item-name').value = '';
+      document.getElementById('item-description').value = '';
+      document.getElementById('item-box').value = '';
+      document.getElementById('item-location').value = '';
+      document.getElementById('item-image').value = '';
+      document.getElementById('item-id').disabled = false;
+      document.getElementById('item-modal-title').textContent = 'Add Item';
+      
+      updateBoxSelect();
+      
+      if (editId) {
+        const item = items.find(i => i.id === editId);
+        if (item) {
+          document.getElementById('item-edit-id').value = item.id;
+          document.getElementById('item-id').value = item.id;
+          document.getElementById('item-id').disabled = true;
+          document.getElementById('item-name').value = item.name;
+          document.getElementById('item-description').value = item.description || '';
+          document.getElementById('item-box').value = item.box_id || '';
+          document.getElementById('item-location').value = item.location || '';
+          document.getElementById('item-modal-title').textContent = 'Edit Item';
+        }
+      }
+      
+      document.getElementById('item-modal').classList.add('active');
+    }
+
+    function editItem(id) {
+      openItemModal(id);
+    }
+
+    async function saveItem(e) {
+      e.preventDefault();
+      const editId = document.getElementById('item-edit-id').value;
+      const id = document.getElementById('item-id').value.trim().toUpperCase();
+      const name = document.getElementById('item-name').value;
+      const description = document.getElementById('item-description').value;
+      const box_id = document.getElementById('item-box').value;
+      const location = document.getElementById('item-location').value;
+      const imageFile = document.getElementById('item-image').files[0];
+
+      if (!id.startsWith('ITM')) {
+        showToast('Item ID must start with ITM', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('id', id);
+      formData.append('name', name);
+      formData.append('description', description);
+      formData.append('box_id', box_id);
+      formData.append('location', location);
+      if (imageFile) formData.append('image', imageFile);
+
+      const method = editId ? 'PUT' : 'POST';
+      const url = editId ? `/api/items/${editId}` : '/api/items';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'X-Admin-Password': password },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+      } else {
+        showToast('Item saved successfully', 'success');
+        closeModal('item-modal');
+        loadDashboard();
+      }
+    }
+
+    async function deleteItem(id) {
+      if (!confirm(`Delete item ${id}?`)) return;
+
+      const res = await fetch(`/api/items/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-Admin-Password': password }
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+      } else {
+        showToast('Item deleted', 'success');
+        loadDashboard();
+      }
+    }
+
+    // Modal helpers
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    // Label generation
+    function selectAllBoxes() {
+      document.getElementById('label-ids').value = boxes.map(b => b.id).join(', ');
+    }
+
+    function selectAllItems() {
+      document.getElementById('label-ids').value = items.map(i => i.id).join(', ');
+    }
+
+    function selectUnassigned() {
+      const unassigned = items.filter(i => !i.box_id).map(i => i.id).join(', ');
+      document.getElementById('label-ids').value = unassigned || 'No unassigned items';
+    }
+
+    function generatePDF() {
+      const ids = document.getElementById('label-ids').value;
+      const template = document.getElementById('label-template').value;
+      const startIndex = document.getElementById('label-start').value;
+
+      if (!ids || ids === 'No unassigned items') {
+        showToast('Please select IDs to generate labels', 'error');
+        return;
+      }
+
+      const url = `/api/labels/pdf?ids=${encodeURIComponent(ids)}&template=${template}&start_index=${startIndex}&password=${password}`;
+      window.open(url, '_blank');
+    }
+
+    // Toast
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `toast show ${type}`;
+      setTimeout(() => toast.className = 'toast', 3000);
+    }
+
+    // Initialize
+    showTab('boxes');
+  </script>
+</body>
+</html>
