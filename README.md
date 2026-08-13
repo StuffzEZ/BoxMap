@@ -74,8 +74,16 @@ docker-compose up -d --build
 | `ADMIN_PASSWORD` | `admin123` | Password for admin panel |
 | `PORT` | `3000` | Server port |
 | `IMAGE_RECOGNITION_ENABLED` | `false` | Enable image recognition (items only) |
+| `APP_URL` | `http://localhost:<PORT>` | Public URL of the app used when encoding QR codes (should include protocol and port) |
 
 ## Usage
+
+### APP_URL and QR behavior
+
+- `APP_URL` should be set to the externally reachable URL of your BoxMap instance, including protocol and port (for example `https://boxmap.example.com:3962` or `http://localhost:3000`).
+- When generating QR codes, the app encodes full URLs like: `${APP_URL}?id=BOX1234567890`. External scanners will open the app URL. The in-app scanner automatically strips the `?id=` prefix and uses only the ID when querying the API.
+- For live camera access from mobile devices, serve the app over HTTPS or use `localhost`/a trusted certificate — browsers require a secure context for `getUserMedia()`.
+
 
 ### Scanner (http://localhost:3000)
 
