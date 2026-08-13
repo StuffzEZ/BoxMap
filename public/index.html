@@ -225,13 +225,39 @@
       .then(data => {
         if (data.error) {
           showToast(data.error, 'error');
-        } else {
-          showToast('Image uploaded successfully', 'success');
+          return;
         }
+
+        // Show uploaded image and items to match
+        const resultDiv = document.getElementById('scan-result');
+        const contentDiv = document.getElementById('result-content');
+        
+        resultDiv.className = 'card scan-result found';
+        contentDiv.innerHTML = `
+          <h3 style="margin-bottom: 12px">Select Matching Item</h3>
+          <div style="margin-bottom: 16px">
+            <img src="${data.imageUrl}" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 1px solid var(--border);">
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.9rem;">Tap the item that matches this image:</p>
+          <div class="items-grid">
+            ${data.items.map(item => `
+              <div class="item-chip" onclick="document.getElementById('qr-input').value='${item.id}'; scanQR();" style="cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                ${item.image ? `<img src="${item.image}" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;">` : ''}
+                <div>
+                  <div class="name">${item.name}</div>
+                  <div class="id">${item.id}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          ${data.items.length === 0 ? '<p style="color: var(--text-muted); text-align: center; padding: 20px;">No items with images found</p>' : ''}
+        `;
       })
       .catch(err => {
         showToast('Error uploading image', 'error');
       });
+      
+      event.target.value = '';
     }
 
     document.getElementById('upload-area')?.addEventListener('click', () => {

@@ -2,6 +2,7 @@ const express = require('express');
 const Database = require('better-sqlite3');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
+const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
@@ -112,10 +113,14 @@ app.post('/api/recognize', upload.single('image'), (req, res) => {
     return res.status(400).json({ error: 'Image is required' });
   }
 
-  // Placeholder for image recognition - in production, integrate with a real service
+  // Get all items with images for manual matching
+  const itemsWithImages = db.prepare('SELECT id, name, image FROM items WHERE image IS NOT NULL').all();
+  
   res.json({ 
-    message: 'Image recognition is a placeholder. Integrate with a real service like Google Vision or AWS Rekognition.',
-    imageUrl: `/uploads/images/${req.file.filename}`
+    success: true,
+    imageUrl: `/uploads/images/${req.file.filename}`,
+    items: itemsWithImages,
+    message: 'Select the item that matches this image'
   });
 });
 
@@ -262,7 +267,7 @@ app.delete('/api/items/:id', authenticate, (req, res) => {
 
 // ============ PDF LABEL GENERATION ============
 
-app.get('/api/labels/pdf', authenticate, (req, res) => {
+app.get('/api/labels/pdf', authenticate, async (req, res) => {
   const { ids, template, start_index } = req.query;
   
   if (!ids) {
@@ -271,7 +276,7 @@ app.get('/api/labels/pdf', authenticate, (req, res) => {
 
   const idList = ids.split(',').map(id => id.trim().toUpperCase());
   
-  // Template configurations (Avery 5160 compatible - 30 labels per sheet, 3 columns x 10 rows)
+  // Template configurations
   const templates = {
     'avery-5160': {
       width: 612, height: 792,
@@ -280,7 +285,8 @@ app.get('/api/labels/pdf', authenticate, (req, res) => {
       labelWidth: 180, labelHeight: 54,
       marginLeft: 18, marginTop: 36,
       colGap: 9, rowGap: 0,
-      hasBorder: false
+      hasBorder: false,
+      qrSize: 40
     },
     'avery-5161': {
       width: 612, height: 792,
@@ -289,7 +295,8 @@ app.get('/api/labels/pdf', authenticate, (req, res) => {
       labelWidth: 136, labelHeight: 54,
       marginLeft: 18, marginTop: 36,
       colGap: 9, rowGap: 0,
-      hasBorder: false
+      hasBorder: false,
+      qrSize: 36
     },
     'avery-5162': {
       width: 612, height: 792,
@@ -298,7 +305,8 @@ app.get('/api/labels/pdf', authenticate, (req, res) => {
       labelWidth: 180, labelHeight: 72,
       marginLeft: 18, marginTop: 54,
       colGap: 9, rowGap: 18,
-      hasBorder: false
+      hasBorder: false,
+      qrSize: 50
     },
     'dymo-30252': {
       width: 612, height: 792,
@@ -307,7 +315,8 @@ app.get('/api/labels/pdf', authenticate, (req, res) => {
       labelWidth: 252, labelHeight: 72,
       marginLeft: 72, marginTop: 36,
       colGap: 36, rowGap: 18,
-      hasBorder: true
+      hasBorder: true,
+      qrSize: 55
     },
     'borderless-14': {
       width: 612, height: 792,
@@ -316,7 +325,8 @@ app.get('/api/labels/pdf', authenticate, (req, res) => {
       labelWidth: 270, labelHeight: 72,
       marginLeft: 36, marginTop: 36,
       colGap: 18, rowGap: 18,
-      hasBorder: false
+      hasBorder: false,
+      qrSize: 55
     }
   };
 
@@ -334,8 +344,8 @@ app.get('/api/labels/pdf', authenticate, (req, res) => {
 
   let labelIndex = 0;
 
-  idList.forEach(id => {
-    if (labelIndex >= tmpl.labelsPerSheet) return;
+  for (const id of idList) {
+    if (labelIndex >= tmpl.labelsPerSheet) break;
 
     const col = labelIndex % tmpl.cols;
     const row = Math.floor(labelIndex / tmpl.cols);
@@ -358,29 +368,50 @@ app.get('/api/labels/pdf', authenticate, (req, res) => {
       type = 'ITEM';
     }
 
-    if (data) {
-      // QR code placeholder (left side)
-      doc.fontSize(8).font('Helvetica-Bold');
-      doc.text(type, x + 5, y + 5, { width: 40 });
-      doc.fontSize(6).font('Helvetica');
-      doc.text(id, x + 5, y + 18, { width: 40 });
+    // Generate QR code
+    try {
+      const qrBuffer = await QRCode.toBuffer(id, {
+        width: tmpl.qrSize,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
 
-      // Info (right side)
-      doc.fontSize(7).font('Helvetica-Bold');
-      doc.text(data.name, x + 50, y + 5, { width: tmpl.labelWidth - 55 });
+      // Draw QR code on left side
+      doc.image(qrBuffer, x + 5, y + (tmpl.labelHeight - tmpl.qrSize) / 2, {
+        width: tmpl.qrSize,
+        height: tmpl.qrSize
+      });
+    } catch (err) {
+      // Fallback if QR generation fails
+      doc.fontSize(6).font('Helvetica');
+      doc.text('[QR]', x + 5, y + 5, { width: tmpl.qrSize });
+    }
+
+    // Info on right side
+    const textX = x + tmpl.qrSize + 12;
+    const textWidth = tmpl.labelWidth - tmpl.qrSize - 17;
+
+    if (data) {
+      doc.fontSize(8).font('Helvetica-Bold');
+      doc.text(data.name, textX, y + 5, { width: textWidth });
+      doc.fontSize(6).font('Helvetica');
+      doc.text(id, textX, y + 20, { width: textWidth });
       doc.fontSize(5).font('Helvetica');
-      doc.text(data.description || '', x + 50, y + 18, { width: tmpl.labelWidth - 55 });
+      doc.text(data.description || '', textX, y + 32, { width: textWidth, height: 15 });
       
       if (type === 'ITEM' && data.location) {
-        doc.text(`Location: ${data.location}`, x + 50, y + 32, { width: tmpl.labelWidth - 55 });
+        doc.text(data.location, textX, y + 48, { width: textWidth });
       }
     } else {
-      doc.fontSize(8).font('Helvetica');
-      doc.text(id, x + 5, y + 5, { width: tmpl.labelWidth - 10 });
+      doc.fontSize(7).font('Helvetica');
+      doc.text(id, textX, y + 5, { width: textWidth });
     }
 
     labelIndex++;
-  });
+  }
 
   doc.end();
 });
