@@ -48,6 +48,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
+    unit_id TEXT,
     image TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -59,10 +60,17 @@ db.exec(`
     description TEXT,
     box_id TEXT,
     image TEXT,
-    location TEXT,
+    -- location moved to boxes as unit/location reference
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (box_id) REFERENCES boxes(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS units (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
 
@@ -128,7 +136,9 @@ app.post('/api/scan', (req, res) => {
       return res.json({ type: 'box', found: false, id: code });
     }
     const items = db.prepare('SELECT * FROM items WHERE box_id = ?').all(code);
-    return res.json({ type: 'box', found: true, data: box, items });
+    let unit = null;
+    if (box.unit_id) unit = db.prepare('SELECT * FROM units WHERE id = ?').get(box.unit_id);
+    return res.json({ type: 'box', found: true, data: box, unit, items });
   }
 
   if (code.startsWith('ITM')) {
@@ -137,7 +147,9 @@ app.post('/api/scan', (req, res) => {
       return res.json({ type: 'item', found: false, id: code });
     }
     const box = item.box_id ? db.prepare('SELECT * FROM boxes WHERE id = ?').get(item.box_id) : null;
-    return res.json({ type: 'item', found: true, data: item, box });
+    let unit = null;
+    if (box && box.unit_id) unit = db.prepare('SELECT * FROM units WHERE id = ?').get(box.unit_id);
+    return res.json({ type: 'item', found: true, data: item, box, unit });
   }
 
   return res.status(400).json({ error: 'Invalid QR code format. Must start with BOX or ITM' });
@@ -227,6 +239,14 @@ app.post('/api/recognize', upload.single('image'), async (req, res) => {
 
 app.get('/api/boxes', (req, res) => {
   const boxes = db.prepare('SELECT * FROM boxes ORDER BY created_at DESC').all();
+  // attach unit info
+  for (const b of boxes) {
+    if (b.unit_id) {
+      b.unit = db.prepare('SELECT * FROM units WHERE id = ?').get(b.unit_id);
+    } else {
+      b.unit = null;
+    }
+  }
   res.json(boxes);
 });
 
@@ -234,11 +254,14 @@ app.get('/api/boxes/:id', (req, res) => {
   const box = db.prepare('SELECT * FROM boxes WHERE id = ?').get(req.params.id);
   if (!box) return res.status(404).json({ error: 'Box not found' });
   const items = db.prepare('SELECT * FROM items WHERE box_id = ?').all(req.params.id);
-  res.json({ ...box, items });
+  let unit = null;
+  if (box.unit_id) unit = db.prepare('SELECT * FROM units WHERE id = ?').get(box.unit_id);
+  res.json({ ...box, unit, items });
 });
 
 app.post('/api/boxes', authenticate, upload.single('image'), (req, res) => {
   const { id, name, description } = req.body;
+  const unit_id = req.body.unit_id || null;
   if (!id || !name) {
     return res.status(400).json({ error: 'ID and name are required' });
   }
@@ -255,21 +278,32 @@ app.post('/api/boxes', authenticate, upload.single('image'), (req, res) => {
 
   const image = req.file ? `/uploads/images/${req.file.filename}` : null;
 
-  db.prepare('INSERT INTO boxes (id, name, description, image) VALUES (?, ?, ?, ?)')
-    .run(code, name, description || '', image);
+  if (unit_id) {
+    const unit = db.prepare('SELECT id FROM units WHERE id = ?').get(unit_id);
+    if (!unit) return res.status(400).json({ error: 'Unit not found' });
+  }
+
+  db.prepare('INSERT INTO boxes (id, name, description, unit_id, image) VALUES (?, ?, ?, ?, ?)')
+    .run(code, name, description || '', unit_id, image);
 
   res.json({ success: true, id: code });
 });
 
 app.put('/api/boxes/:id', authenticate, upload.single('image'), (req, res) => {
   const { name, description } = req.body;
+  const unit_id = req.body.unit_id || null;
   const box = db.prepare('SELECT * FROM boxes WHERE id = ?').get(req.params.id);
   if (!box) return res.status(404).json({ error: 'Box not found' });
 
   const image = req.file ? `/uploads/images/${req.file.filename}` : box.image;
 
-  db.prepare('UPDATE boxes SET name = ?, description = ?, image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-    .run(name || box.name, description || box.description, image, req.params.id);
+  if (unit_id) {
+    const unit = db.prepare('SELECT id FROM units WHERE id = ?').get(unit_id);
+    if (!unit) return res.status(400).json({ error: 'Unit not found' });
+  }
+
+  db.prepare('UPDATE boxes SET name = ?, description = ?, unit_id = ?, image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    .run(name || box.name, description || box.description, unit_id, image, req.params.id);
 
   res.json({ success: true });
 });
@@ -300,7 +334,9 @@ app.get('/api/items/:id', (req, res) => {
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Item not found' });
   const box = item.box_id ? db.prepare('SELECT * FROM boxes WHERE id = ?').get(item.box_id) : null;
-  res.json({ ...item, box });
+  let unit = null;
+  if (box && box.unit_id) unit = db.prepare('SELECT * FROM units WHERE id = ?').get(box.unit_id);
+  res.json({ ...item, box, unit });
 });
 
 app.post('/api/items', authenticate, upload.single('image'), (req, res) => {
@@ -467,6 +503,12 @@ app.get('/api/labels/pdf', authenticate, async (req, res) => {
         doc.fontSize(descFontSize).font('Helvetica');
         doc.text(data.description || '', textX, y + 5 + nameFontSize + idFontSize + 6, { width: textWidth, height: tmpl.labelHeight - (nameFontSize + idFontSize + 12) });
       }
+
+      // Small instruction encouraging scanning the QR
+      try {
+        doc.fontSize(6).font('Helvetica-Oblique');
+        doc.text('Scan the QR code to see this on the website', textX, y + tmpl.labelHeight - 12, { width: textWidth });
+      } catch (e) {}
 
       if (type === 'ITEM' && data.location) {
         doc.fontSize(Math.max(6, idFontSize - 1)).font('Helvetica-Oblique');
@@ -639,6 +681,41 @@ app.get('/api/labels/templates', (req, res) => {
     { id: 'address-2x8', name: 'Address 2x8 (16 labels, larger)' },
     { id: 'small-3x8', name: 'Small 3x8 (24 labels, compact)' }
   ]);
+});
+
+// Units endpoints
+app.get('/api/units', (req, res) => {
+  const units = db.prepare('SELECT * FROM units ORDER BY name').all();
+  res.json(units);
+});
+
+app.post('/api/units', authenticate, (req, res) => {
+  const { id, name, description } = req.body;
+  if (!id || !name) return res.status(400).json({ error: 'id and name required' });
+  const code = id.trim().toUpperCase();
+  const exists = db.prepare('SELECT id FROM units WHERE id = ?').get(code);
+  if (exists) return res.status(400).json({ error: 'Unit id already exists' });
+  db.prepare('INSERT INTO units (id, name, description) VALUES (?, ?, ?)').run(code, name, description || '');
+  res.json({ success: true, id: code });
+});
+
+app.put('/api/units/:id', authenticate, (req, res) => {
+  const id = req.params.id;
+  const { name, description } = req.body;
+  const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(id);
+  if (!unit) return res.status(404).json({ error: 'Unit not found' });
+  db.prepare('UPDATE units SET name = ?, description = ? WHERE id = ?').run(name || unit.name, description || unit.description, id);
+  res.json({ success: true });
+});
+
+app.delete('/api/units/:id', authenticate, (req, res) => {
+  const id = req.params.id;
+  const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(id);
+  if (!unit) return res.status(404).json({ error: 'Unit not found' });
+  // clear unit references from boxes
+  db.prepare('UPDATE boxes SET unit_id = NULL WHERE unit_id = ?').run(id);
+  db.prepare('DELETE FROM units WHERE id = ?').run(id);
+  res.json({ success: true });
 });
 
 // Cleanup unreferenced uploaded images older than threshold (seconds)

@@ -49,6 +49,7 @@
         <button class="btn btn-secondary" onclick="showTab('boxes')" id="tab-boxes">Boxes</button>
         <button class="btn btn-secondary" onclick="showTab('items')" id="tab-items">Items</button>
         <button class="btn btn-secondary" onclick="showTab('labels')" id="tab-labels">Labels</button>
+        <button class="btn btn-secondary" onclick="showTab('units')" id="tab-units">Units</button>
       </div>
 
       <!-- Boxes Tab -->
@@ -60,12 +61,13 @@
         <div class="table-container">
           <table>
             <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Items</th>
-                <th>Actions</th>
-              </tr>
+                      <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Unit</th>
+                        <th>Items</th>
+                        <th>Actions</th>
+                      </tr>
             </thead>
             <tbody id="boxes-table"></tbody>
           </table>
@@ -85,7 +87,7 @@
                 <th>ID</th>
                 <th>Name</th>
                 <th>Box</th>
-                <th>Location</th>
+                <th>Unit</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -146,6 +148,26 @@
           </div>
         </div>
       </div>
+      <!-- Units Tab -->
+      <div class="card" id="panel-units" style="display:none">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div class="card-title" style="margin-bottom: 0">Units</div>
+          <button class="btn btn-primary" onclick="openUnitModal()">+ Add Unit</button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="units-table"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <nav class="nav-links" style="margin-top: 30px;">
@@ -181,6 +203,15 @@
           <label>Image</label>
           <input type="file" id="box-image" accept="image/*" capture="environment">
         </div>
+        <div class="form-group">
+          <label>Unit (location)</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <select id="box-unit">
+              <option value="">No unit</option>
+            </select>
+            <button type="button" class="btn btn-secondary" onclick="createUnitPrompt()">+ Unit</button>
+          </div>
+        </div>
         <button type="submit" class="btn btn-primary btn-full">Save Box</button>
       </form>
     </div>
@@ -202,6 +233,32 @@
             <button type="button" class="btn btn-secondary" onclick="generateId('item')">Generate</button>
           </div>
         </div>
+
+          <!-- Unit Modal -->
+          <div class="modal-overlay" id="unit-modal">
+            <div class="modal">
+              <div class="modal-header">
+                <h2 id="unit-modal-title">Add Unit</h2>
+                <button class="modal-close" onclick="closeModal('unit-modal')">&times;</button>
+              </div>
+              <form id="unit-form" onsubmit="saveUnit(event)">
+                <input type="hidden" id="unit-edit-id">
+                <div class="form-group">
+                  <label>Unit ID</label>
+                  <input type="text" id="unit-id" placeholder="UNIT01" required>
+                </div>
+                <div class="form-group">
+                  <label>Name</label>
+                  <input type="text" id="unit-name" placeholder="Shelf A" required>
+                </div>
+                <div class="form-group">
+                  <label>Description</label>
+                  <textarea id="unit-description" rows="2" placeholder="Optional description"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Save Unit</button>
+              </form>
+            </div>
+          </div>
         <div class="form-group">
           <label>Name</label>
           <input type="text" id="item-name" placeholder="Item name" required>
@@ -281,7 +338,7 @@
     });
 
     async function loadDashboard() {
-      await Promise.all([loadStats(), loadBoxes(), loadItems()]);
+      await Promise.all([loadStats(), loadUnits(), loadBoxes(), loadItems()]);
     }
 
     async function loadStats() {
@@ -301,6 +358,44 @@
       boxes = await res.json();
       renderBoxes();
       updateBoxSelect();
+    }
+
+    async function loadUnits() {
+      const res = await fetch('/api/units', { headers: { 'X-Admin-Password': password } });
+      if (res.ok) {
+        window.units = await res.json();
+      } else {
+        window.units = [];
+      }
+      updateBoxUnitSelect();
+      renderUnits();
+    }
+
+    function updateBoxUnitSelect() {
+      const sel = document.getElementById('box-unit');
+      if (!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">No unit</option>' + (window.units || []).map(u => `<option value="${u.id}">${u.name} (${u.id})</option>`).join('');
+      sel.value = cur || '';
+    }
+
+    async function createUnitPrompt() {
+      const id = prompt('Enter unit ID (e.g. UNIT01)');
+      if (!id) return;
+      const name = prompt('Enter unit name');
+      if (!name) return;
+      const res = await fetch('/api/units', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+        body: JSON.stringify({ id: id.trim().toUpperCase(), name, description: '' })
+      });
+      const data = await res.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+      } else {
+        showToast('Unit created', 'success');
+        await loadUnits();
+      }
     }
 
     async function loadItems() {
@@ -324,6 +419,7 @@
           <tr>
             <td><strong>${box.id}</strong></td>
             <td>${box.name}</td>
+            <td>${box.unit ? box.unit.name + ' (' + box.unit.id + ')' : '<span style="color: var(--text-muted)">-</span>'}</td>
             <td>${itemCount}</td>
             <td>
               <button class="btn btn-secondary" onclick="editBox('${box.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
@@ -340,19 +436,21 @@
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-muted)">No items yet</td></tr>';
         return;
       }
-
-      tbody.innerHTML = items.map(item => `
+      tbody.innerHTML = items.map(item => {
+        const box = boxes.find(b => b.id === item.box_id);
+        const unitLabel = box && box.unit ? `${box.unit.name} (${box.unit.id})` : '-';
+        return `
         <tr>
           <td><strong>${item.id}</strong></td>
           <td>${item.name}</td>
           <td>${item.box_id || '<span style="color: var(--text-muted)">-</span>'}</td>
-          <td>${item.location || '-'}</td>
+          <td>${unitLabel}</td>
           <td>
             <button class="btn btn-secondary" onclick="editItem('${item.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
             <button class="btn btn-danger" onclick="deleteItem('${item.id}')" style="padding: 6px 12px; font-size: 0.8rem">Delete</button>
           </td>
         </tr>
-      `).join('');
+      `}).join('');
     }
 
     function updateBoxSelect() {
@@ -390,6 +488,11 @@
           document.getElementById('box-name').value = box.name;
           document.getElementById('box-description').value = box.description || '';
           document.getElementById('box-modal-title').textContent = 'Edit Box';
+          // set unit select if available
+          if (box.unit) {
+            updateBoxUnitSelect();
+            document.getElementById('box-unit').value = box.unit.id;
+          }
         }
       }
       
@@ -417,6 +520,8 @@
       formData.append('id', id);
       formData.append('name', name);
       formData.append('description', description);
+      const unit_id = document.getElementById('box-unit')?.value || '';
+      if (unit_id) formData.append('unit_id', unit_id);
       if (imageFile) formData.append('image', imageFile);
 
       const method = editId ? 'PUT' : 'POST';
@@ -696,6 +801,86 @@
         }
       }
       closeModal('quickselect-modal');
+    }
+
+    // Units UI
+    function renderUnits() {
+      const tbody = document.getElementById('units-table');
+      const unitsList = window.units || [];
+      if (unitsList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted)">No units yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = unitsList.map(u => `
+        <tr>
+          <td><strong>${u.id}</strong></td>
+          <td>${u.name}</td>
+          <td>${u.description || '-'}</td>
+          <td>
+            <button class="btn btn-secondary" onclick="editUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
+            <button class="btn btn-danger" onclick="deleteUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function openUnitModal(editId = null) {
+      document.getElementById('unit-edit-id').value = '';
+      document.getElementById('unit-id').value = '';
+      document.getElementById('unit-name').value = '';
+      document.getElementById('unit-description').value = '';
+      document.getElementById('unit-id').disabled = false;
+      document.getElementById('unit-modal-title').textContent = 'Add Unit';
+
+      if (editId) {
+        const u = (window.units || []).find(x => x.id === editId);
+        if (u) {
+          document.getElementById('unit-edit-id').value = u.id;
+          document.getElementById('unit-id').value = u.id;
+          document.getElementById('unit-id').disabled = true;
+          document.getElementById('unit-name').value = u.name;
+          document.getElementById('unit-description').value = u.description || '';
+          document.getElementById('unit-modal-title').textContent = 'Edit Unit';
+        }
+      }
+      document.getElementById('unit-modal').classList.add('active');
+    }
+
+    function editUnit(id) { openUnitModal(id); }
+
+    async function saveUnit(e) {
+      e.preventDefault();
+      const editId = document.getElementById('unit-edit-id').value;
+      const id = document.getElementById('unit-id').value.trim().toUpperCase();
+      const name = document.getElementById('unit-name').value;
+      const description = document.getElementById('unit-description').value;
+      if (!id || !name) { showToast('Unit id and name required', 'error'); return; }
+
+      const url = editId ? `/api/units/${editId}` : '/api/units';
+      const method = editId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+        body: JSON.stringify({ id, name, description })
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || 'Failed to save unit', 'error'); return; }
+      showToast('Unit saved', 'success');
+      closeModal('unit-modal');
+      await loadUnits();
+      renderUnits();
+      renderBoxes();
+    }
+
+    async function deleteUnit(id) {
+      if (!confirm(`Delete unit ${id}? Boxes referencing it will be cleared.`)) return;
+      const res = await fetch(`/api/units/${id}`, { method: 'DELETE', headers: { 'X-Admin-Password': password } });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || 'Failed to delete unit', 'error'); return; }
+      showToast('Unit deleted', 'success');
+      await loadUnits();
+      renderUnits();
+      loadBoxes();
     }
 
     // Toast
