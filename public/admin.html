@@ -113,11 +113,25 @@
               <option value="avery-5160">Avery 5160 (30 labels, no border)</option>
               <option value="avery-5161">Avery 5161 (40 labels, no border)</option>
               <option value="avery-5162">Avery 5162 (21 labels, no border)</option>
+              <option value="address-2x8">Address 2x8 (16 labels)</option>
+              <option value="small-3x8">Small 3x8 (24 labels)</option>
             </select>
           </div>
           <div class="form-group">
             <label>Start at index</label>
             <input type="number" id="label-start" value="0" min="0" max="39">
+          </div>
+          <div class="form-group">
+            <label>Formatting options</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input type="number" id="font-size-name" placeholder="Name size" value="9" style="width:80px">
+              <input type="number" id="font-size-id" placeholder="ID size" value="7" style="width:80px">
+              <input type="number" id="font-size-desc" placeholder="Desc size" value="6" style="width:80px">
+            </div>
+            <div style="margin-top:8px; display:flex; gap:12px; align-items:center;">
+              <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="show-desc" checked> Show description</label>
+              <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="include-image"> Include image</label>
+            </div>
           </div>
           <button class="btn btn-primary" onclick="generatePDF()">Generate PDF</button>
         </div>
@@ -558,13 +572,17 @@
       const ids = document.getElementById('label-ids').value;
       const template = document.getElementById('label-template').value;
       const startIndex = document.getElementById('label-start').value;
+      const fontSizeName = document.getElementById('font-size-name').value;
+      const fontSizeId = document.getElementById('font-size-id').value;
+      const fontSizeDesc = document.getElementById('font-size-desc').value;
+      const showDesc = document.getElementById('show-desc').checked;
+      const includeImage = document.getElementById('include-image').checked;
 
       if (!ids || ids === 'No unassigned items') {
         showToast('Please select IDs to generate labels', 'error');
         return;
       }
-
-      const url = `/api/labels/pdf?ids=${encodeURIComponent(ids)}&template=${template}&start_index=${startIndex}&password=${password}`;
+      const url = `/api/labels/pdf?ids=${encodeURIComponent(ids)}&template=${template}&start_index=${startIndex}&fontSizeName=${encodeURIComponent(fontSizeName)}&fontSizeId=${encodeURIComponent(fontSizeId)}&fontSizeDesc=${encodeURIComponent(fontSizeDesc)}&showDescription=${showDesc}&includeImage=${includeImage}&password=${password}`;
       window.open(url, '_blank');
     }
 

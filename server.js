@@ -3,9 +3,28 @@ const Database = require('better-sqlite3');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
+const Jimp = require('jimp');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
+
+// Simple logger with levels (default: debug)
+const LOG_LEVEL = (process.env.LOG_LEVEL || 'debug').toLowerCase();
+const levels = { error: 0, warn: 1, info: 2, debug: 3 };
+function shouldLog(level) { return levels[level] <= (levels[LOG_LEVEL] ?? 3); }
+const logger = {
+  debug: (...args) => { if (shouldLog('debug')) console.log(new Date().toISOString(), '[DEBUG]', ...args); },
+  info: (...args) => { if (shouldLog('info')) console.log(new Date().toISOString(), '[INFO]', ...args); },
+  warn: (...args) => { if (shouldLog('warn')) console.warn(new Date().toISOString(), '[WARN]', ...args); },
+  error: (...args) => { if (shouldLog('error')) console.error(new Date().toISOString(), '[ERROR]', ...args); }
+};
+
+// Helper to redact sensitive headers when logging
+function redactHeaders(h) {
+  const copy = Object.assign({}, h);
+  if (copy['x-admin-password']) copy['x-admin-password'] = 'REDACTED';
+  return copy;
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,6 +70,26 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Request logging middleware (redacts admin password)
+app.use((req, res, next) => {
+  try {
+    const safeHeaders = redactHeaders(req.headers || {});
+    logger.info(`${req.method} ${req.originalUrl}`);
+    logger.debug('Headers:', safeHeaders);
+    if (['POST','PUT','PATCH'].includes(req.method)) {
+      // Avoid logging potentially large file buffers; log body keys only
+      if (req.body && Object.keys(req.body).length) {
+        const bodyCopy = { ...req.body };
+        if (bodyCopy.password) bodyCopy.password = 'REDACTED';
+        logger.debug('Body:', bodyCopy);
+      }
+    }
+  } catch (e) {
+    logger.warn('Failed to log request', e);
+  }
+  next();
+});
 
 // Multer for file uploads
 const storage = multer.diskStorage({
@@ -104,7 +143,7 @@ app.post('/api/scan', (req, res) => {
 });
 
 // Image recognition endpoint
-app.post('/api/recognize', upload.single('image'), (req, res) => {
+app.post('/api/recognize', upload.single('image'), async (req, res) => {
   if (!IMAGE_RECOGNITION_ENABLED) {
     return res.status(400).json({ error: 'Image recognition is disabled' });
   }
@@ -113,15 +152,66 @@ app.post('/api/recognize', upload.single('image'), (req, res) => {
     return res.status(400).json({ error: 'Image is required' });
   }
 
-  // Get all items with images for manual matching
+  // Compute perceptual hash for uploaded image and compare to item images
+  const uploadedPath = path.join(uploadsDir, req.file.filename);
+
   const itemsWithImages = db.prepare('SELECT id, name, image FROM items WHERE image IS NOT NULL').all();
-  
-  res.json({ 
-    success: true,
-    imageUrl: `/uploads/images/${req.file.filename}`,
-    items: itemsWithImages,
-    message: 'Select the item that matches this image'
-  });
+
+  const results = [];
+
+  try {
+    const uploaded = await Jimp.read(uploadedPath);
+    const uploadedHash = uploaded.hash();
+
+    const hexToBin = (hex) => {
+      return hex.split('').map(h => parseInt(h, 16).toString(2).padStart(4, '0')).join('');
+    };
+
+    const hamming = (h1, h2) => {
+      const b1 = hexToBin(h1);
+      const b2 = hexToBin(h2);
+      let diff = 0;
+      for (let i = 0; i < Math.min(b1.length, b2.length); i++) {
+        if (b1[i] !== b2[i]) diff++;
+      }
+      return diff + Math.abs(b1.length - b2.length);
+    };
+
+    for (const it of itemsWithImages) {
+      try {
+        const imgPath = path.join(__dirname, it.image);
+        if (!fs.existsSync(imgPath)) continue;
+        const candidate = await Jimp.read(imgPath);
+        const candidateHash = candidate.hash();
+        const dist = hamming(uploadedHash, candidateHash);
+        results.push({ id: it.id, name: it.name, image: it.image, distance: dist });
+      } catch (e) {
+        // skip broken images
+      }
+    }
+
+    // Sort by smallest distance (best match first)
+    results.sort((a, b) => a.distance - b.distance);
+
+    // Determine matches with a reasonable threshold (lower is better). Threshold 12 is conservative.
+    const matches = results.filter(r => r.distance <= 12).slice(0, 10);
+
+    res.json({
+      success: true,
+      imageUrl: `/uploads/images/${req.file.filename}`,
+      matches,
+      allCandidates: results.slice(0, 20),
+      message: matches.length ? 'Possible matches found' : 'No confident matches; showing candidates for manual selection'
+    });
+  } catch (err) {
+    // Fallback to manual listing if hash fails
+    return res.json({ 
+      success: true,
+      imageUrl: `/uploads/images/${req.file.filename}`,
+      items: itemsWithImages,
+      message: 'Could not perform automatic matching; select the item that matches this image'
+    });
+  }
 });
 
 // ============ BOXES CRUD ============
@@ -268,7 +358,7 @@ app.delete('/api/items/:id', authenticate, (req, res) => {
 // ============ PDF LABEL GENERATION ============
 
 app.get('/api/labels/pdf', authenticate, async (req, res) => {
-  const { ids, template, start_index } = req.query;
+  const { ids, template, start_index, fontName, fontSizeName, fontSizeId, showDescription, includeImage } = req.query;
   
   if (!ids) {
     return res.status(400).json({ error: 'IDs are required' });
@@ -276,80 +366,46 @@ app.get('/api/labels/pdf', authenticate, async (req, res) => {
 
   const idList = ids.split(',').map(id => id.trim().toUpperCase());
   
-  // Template configurations
+  // Template configurations (sizes in PDF points for US Letter 612x792)
   const templates = {
-    'avery-5160': {
-      width: 612, height: 792,
-      labelsPerSheet: 30,
-      cols: 3, rows: 10,
-      labelWidth: 180, labelHeight: 54,
-      marginLeft: 18, marginTop: 36,
-      colGap: 9, rowGap: 0,
-      hasBorder: false,
-      qrSize: 40
-    },
-    'avery-5161': {
-      width: 612, height: 792,
-      labelsPerSheet: 40,
-      cols: 4, rows: 10,
-      labelWidth: 136, labelHeight: 54,
-      marginLeft: 18, marginTop: 36,
-      colGap: 9, rowGap: 0,
-      hasBorder: false,
-      qrSize: 36
-    },
-    'avery-5162': {
-      width: 612, height: 792,
-      labelsPerSheet: 21,
-      cols: 3, rows: 7,
-      labelWidth: 180, labelHeight: 72,
-      marginLeft: 18, marginTop: 54,
-      colGap: 9, rowGap: 18,
-      hasBorder: false,
-      qrSize: 50
-    },
-    'dymo-30252': {
-      width: 612, height: 792,
-      labelsPerSheet: 14,
-      cols: 2, rows: 7,
-      labelWidth: 252, labelHeight: 72,
-      marginLeft: 72, marginTop: 36,
-      colGap: 36, rowGap: 18,
-      hasBorder: true,
-      qrSize: 55
-    },
-    'borderless-14': {
-      width: 612, height: 792,
-      labelsPerSheet: 14,
-      cols: 2, rows: 7,
-      labelWidth: 270, labelHeight: 72,
-      marginLeft: 36, marginTop: 36,
-      colGap: 18, rowGap: 18,
-      hasBorder: false,
-      qrSize: 55
-    }
+    'avery-5160': { width: 612, height: 792, labelsPerSheet: 30, cols: 3, rows: 10, labelWidth: 180, labelHeight: 54, marginLeft: 18, marginTop: 36, colGap: 9, rowGap: 0, hasBorder: false, qrSize: 40 },
+    'avery-5161': { width: 612, height: 792, labelsPerSheet: 40, cols: 4, rows: 10, labelWidth: 136, labelHeight: 54, marginLeft: 18, marginTop: 36, colGap: 9, rowGap: 0, hasBorder: false, qrSize: 36 },
+    'avery-5162': { width: 612, height: 792, labelsPerSheet: 21, cols: 3, rows: 7, labelWidth: 180, labelHeight: 72, marginLeft: 18, marginTop: 54, colGap: 9, rowGap: 18, hasBorder: false, qrSize: 50 },
+    'dymo-30252': { width: 612, height: 792, labelsPerSheet: 14, cols: 2, rows: 7, labelWidth: 252, labelHeight: 72, marginLeft: 72, marginTop: 36, colGap: 36, rowGap: 18, hasBorder: true, qrSize: 55 },
+    'borderless-14': { width: 612, height: 792, labelsPerSheet: 14, cols: 2, rows: 7, labelWidth: 270, labelHeight: 72, marginLeft: 36, marginTop: 36, colGap: 18, rowGap: 18, hasBorder: false, qrSize: 55 },
+    'address-2x8': { width: 612, height: 792, labelsPerSheet: 16, cols: 2, rows: 8, labelWidth: 270, labelHeight: 90, marginLeft: 36, marginTop: 30, colGap: 18, rowGap: 12, hasBorder: false, qrSize: 60 },
+    'small-3x8': { width: 612, height: 792, labelsPerSheet: 24, cols: 3, rows: 8, labelWidth: 172, labelHeight: 90, marginLeft: 18, marginTop: 30, colGap: 6, rowGap: 12, hasBorder: false, qrSize: 48 }
   };
 
   const tmpl = templates[template] || templates['dymo-30252'];
   const startIndex = parseInt(start_index) || 0;
 
-  const doc = new PDFDocument({
-    size: [tmpl.width, tmpl.height],
-    margin: 0
-  });
+  // Formatting options
+  function nineOrDefault(val, def) { return isNaN(val) ? def : val; }
+  const nameFontSize = nineOrDefault(parseInt(fontSizeName), 9);
+  const idFontSize = nineOrDefault(parseInt(fontSizeId), 7);
+  const descFontSize = showDescription === 'false' ? 0 : (nineOrDefault(parseInt(req.query.fontSizeDesc), 6));
+  const useImage = includeImage === 'true';
+
+  const doc = new PDFDocument({ size: [tmpl.width, tmpl.height], margin: 0 });
 
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'attachment; filename=labels.pdf');
   doc.pipe(res);
 
-  let labelIndex = 0;
+  let labelIndex = startIndex || 0;
 
-  for (const id of idList) {
-    if (labelIndex >= tmpl.labelsPerSheet) break;
+  for (let i = 0; i < idList.length; i++) {
+    const id = idList[i];
 
-    const col = labelIndex % tmpl.cols;
-    const row = Math.floor(labelIndex / tmpl.cols);
-    
+    // Handle pagination: add a new page for each sheet when needed
+    const pageLabelIndex = labelIndex % tmpl.labelsPerSheet;
+    if (labelIndex > 0 && pageLabelIndex === 0) {
+      doc.addPage({ size: [tmpl.width, tmpl.height], margin: 0 });
+    }
+
+    const col = pageLabelIndex % tmpl.cols;
+    const row = Math.floor(pageLabelIndex / tmpl.cols);
     const x = tmpl.marginLeft + col * (tmpl.labelWidth + tmpl.colGap);
     const y = tmpl.marginTop + row * (tmpl.labelHeight + tmpl.rowGap);
 
@@ -370,22 +426,10 @@ app.get('/api/labels/pdf', authenticate, async (req, res) => {
 
     // Generate QR code
     try {
-      const qrBuffer = await QRCode.toBuffer(id, {
-        width: tmpl.qrSize,
-        margin: 1,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      });
-
+      const qrBuffer = await QRCode.toBuffer(id, { width: tmpl.qrSize, margin: 1, color: { dark: '#000000', light: '#FFFFFF' } });
       // Draw QR code on left side
-      doc.image(qrBuffer, x + 5, y + (tmpl.labelHeight - tmpl.qrSize) / 2, {
-        width: tmpl.qrSize,
-        height: tmpl.qrSize
-      });
+      doc.image(qrBuffer, x + 5, y + (tmpl.labelHeight - tmpl.qrSize) / 2, { width: tmpl.qrSize, height: tmpl.qrSize });
     } catch (err) {
-      // Fallback if QR generation fails
       doc.fontSize(6).font('Helvetica');
       doc.text('[QR]', x + 5, y + 5, { width: tmpl.qrSize });
     }
@@ -395,15 +439,34 @@ app.get('/api/labels/pdf', authenticate, async (req, res) => {
     const textWidth = tmpl.labelWidth - tmpl.qrSize - 17;
 
     if (data) {
-      doc.fontSize(8).font('Helvetica-Bold');
-      doc.text(data.name, textX, y + 5, { width: textWidth });
-      doc.fontSize(6).font('Helvetica');
-      doc.text(id, textX, y + 20, { width: textWidth });
-      doc.fontSize(5).font('Helvetica');
-      doc.text(data.description || '', textX, y + 32, { width: textWidth, height: 15 });
-      
+      doc.fontSize(nameFontSize).font('Helvetica-Bold');
+      doc.text(data.name, textX, y + 5, { width: textWidth, continued: false });
+
+      doc.fontSize(idFontSize).font('Helvetica');
+      doc.text(id, textX, y + 5 + nameFontSize + 2, { width: textWidth });
+
+      if (descFontSize > 0 && data.description) {
+        doc.fontSize(descFontSize).font('Helvetica');
+        doc.text(data.description || '', textX, y + 5 + nameFontSize + idFontSize + 6, { width: textWidth, height: tmpl.labelHeight - (nameFontSize + idFontSize + 12) });
+      }
+
       if (type === 'ITEM' && data.location) {
-        doc.text(data.location, textX, y + 48, { width: textWidth });
+        doc.fontSize(Math.max(6, idFontSize - 1)).font('Helvetica-Oblique');
+        doc.text(data.location, textX, y + tmpl.labelHeight - 14, { width: textWidth });
+      }
+
+      // Optionally include the item's photo (scaled) on the right if requested and available
+      if (useImage && data.image) {
+        try {
+          const imgPath = path.join(__dirname, data.image);
+          if (fs.existsSync(imgPath)) {
+            const imgX = textX + textWidth - 40;
+            const imgY = y + (tmpl.labelHeight - 40) / 2;
+            doc.image(imgPath, imgX, imgY, { width: 36, height: 36 });
+          }
+        } catch (e) {
+          // ignore image errors
+        }
       }
     } else {
       doc.fontSize(7).font('Helvetica');
@@ -423,7 +486,9 @@ app.get('/api/labels/templates', (req, res) => {
     { id: 'avery-5161', name: 'Avery 5161 (40 labels, no border)' },
     { id: 'avery-5162', name: 'Avery 5162 (21 labels, no border)' },
     { id: 'dymo-30252', name: 'DYMO 30252 (14 labels, with border)' },
-    { id: 'borderless-14', name: 'Borderless 14 labels' }
+    { id: 'borderless-14', name: 'Borderless 14 labels' },
+    { id: 'address-2x8', name: 'Address 2x8 (16 labels, larger)' },
+    { id: 'small-3x8', name: 'Small 3x8 (24 labels, compact)' }
   ]);
 });
 
@@ -460,7 +525,23 @@ app.get('/', (req, res) => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`BoxMap running on http://localhost:${PORT}`);
-  console.log(`Admin panel: http://localhost:${PORT}/admin`);
-  console.log(`Image recognition: ${IMAGE_RECOGNITION_ENABLED ? 'ENABLED' : 'DISABLED'}`);
+  logger.info(`BoxMap running on http://localhost:${PORT}`);
+  logger.info(`Admin panel: http://localhost:${PORT}/admin`);
+  logger.info(`Image recognition: ${IMAGE_RECOGNITION_ENABLED ? 'ENABLED' : 'DISABLED'}`);
+});
+
+// Express error handler to log unexpected errors
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error in request:', err && err.stack ? err.stack : err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Uncaught exceptions and rejections should be logged for debugging
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught Exception:', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled Rejection:', reason);
 });

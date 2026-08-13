@@ -228,7 +228,9 @@
           return;
         }
 
-        // Show uploaded image and items to match
+        // Determine candidates: prefer automatic matches, then items, then allCandidates
+        const candidates = (data.matches && data.matches.length) ? data.matches : (data.items || data.allCandidates || []);
+
         const resultDiv = document.getElementById('scan-result');
         const contentDiv = document.getElementById('result-content');
         
@@ -240,17 +242,17 @@
           </div>
           <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.9rem;">Tap the item that matches this image:</p>
           <div class="items-grid">
-            ${data.items.map(item => `
+            ${candidates.map(item => `
               <div class="item-chip" onclick="document.getElementById('qr-input').value='${item.id}'; scanQR();" style="cursor: pointer; display: flex; align-items: center; gap: 10px;">
                 ${item.image ? `<img src="${item.image}" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;">` : ''}
                 <div>
                   <div class="name">${item.name}</div>
-                  <div class="id">${item.id}</div>
+                  <div class="id">${item.id} ${item.distance !== undefined ? '• score: ' + item.distance : ''}</div>
                 </div>
               </div>
             `).join('')}
           </div>
-          ${data.items.length === 0 ? '<p style="color: var(--text-muted); text-align: center; padding: 20px;">No items with images found</p>' : ''}
+          ${candidates.length === 0 ? '<p style="color: var(--text-muted); text-align: center; padding: 20px;">No items with images found</p>' : ''}
         `;
       })
       .catch(err => {
