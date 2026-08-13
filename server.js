@@ -694,6 +694,7 @@ app.post('/api/units', authenticate, (req, res) => {
     const { id, name, description } = req.body;
     if (!id || !name) return res.status(400).json({ error: 'id and name required' });
     const code = id.trim().toUpperCase();
+    if (!code.startsWith('UNT')) return res.status(400).json({ error: 'Unit ID must start with UNT' });
     const exists = db.prepare('SELECT id FROM units WHERE id = ?').get(code);
     if (exists) return res.status(400).json({ error: 'Unit id already exists' });
     db.prepare('INSERT INTO units (id, name, description) VALUES (?, ?, ?)').run(code, name, description || '');

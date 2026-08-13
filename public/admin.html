@@ -105,7 +105,7 @@
               <tr>
                 <th>ID</th>
                 <th>Name</th>
-                <th>Description</th>
+                <th>Boxes</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -243,16 +243,15 @@
       <form id="unit-form" onsubmit="saveUnit(event)">
         <input type="hidden" id="unit-edit-id">
         <div class="form-group">
-          <label>Unit ID</label>
-          <input type="text" id="unit-id" placeholder="UNIT01" required>
+          <label>Unit ID (must start with UNT)</label>
+          <div class="manual-input">
+            <input type="text" id="unit-id" placeholder="UNT1234567890" required>
+            <button type="button" class="btn btn-secondary" onclick="generateId('unit')">Generate</button>
+          </div>
         </div>
         <div class="form-group">
           <label>Name</label>
           <input type="text" id="unit-name" placeholder="Shelf A" required>
-        </div>
-        <div class="form-group">
-          <label>Description</label>
-          <textarea id="unit-description" rows="2" placeholder="Optional description"></textarea>
         </div>
         <button type="submit" class="btn btn-primary btn-full">Save Unit</button>
       </form>
@@ -270,6 +269,17 @@
         <input type="text" id="quicksearch-input" placeholder="Search..." oninput="filterQuickSelect()">
       </div>
       <div id="quickselect-list" style="max-height: 50vh; overflow-y: auto;"></div>
+    </div>
+  </div>
+
+  <!-- Unit Detail Modal -->
+  <div class="modal-overlay" id="unitdetail-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="unitdetail-title">Unit Details</h2>
+        <button class="modal-close" onclick="closeModal('unitdetail-modal')">&times;</button>
+      </div>
+      <div id="unitdetail-content"></div>
     </div>
   </div>
 
@@ -391,17 +401,52 @@
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted)">No units yet</td></tr>';
         return;
       }
-      tbody.innerHTML = units.map(u => `
-        <tr>
-          <td><strong>${u.id}</strong></td>
-          <td>${u.name}</td>
-          <td>${u.description || '-'}</td>
-          <td>
-            <button class="btn btn-secondary" onclick="editUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
-            <button class="btn btn-danger" onclick="deleteUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Delete</button>
-          </td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = units.map(u => {
+        const boxCount = boxes.filter(b => b.unit_id === u.id).length;
+        return `
+          <tr>
+            <td><strong>${u.id}</strong></td>
+            <td><span style="cursor:pointer; color:var(--accent)" onclick="viewUnit('${u.id}')">${u.name}</span></td>
+            <td>${boxCount}</td>
+            <td>
+              <button class="btn btn-secondary" onclick="viewUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">View</button>
+              <button class="btn btn-secondary" onclick="editUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Edit</button>
+              <button class="btn btn-danger" onclick="deleteUnit('${u.id}')" style="padding: 6px 12px; font-size: 0.8rem">Delete</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function viewUnit(unitId) {
+      const unit = units.find(u => u.id === unitId);
+      if (!unit) return;
+      
+      const unitBoxes = boxes.filter(b => b.unit_id === unitId);
+      
+      document.getElementById('unitdetail-title').textContent = unit.name;
+      
+      let html = `<p style="color: var(--text-secondary); margin-bottom: 16px;">${unit.description || 'No description'}</p>`;
+      
+      if (unitBoxes.length === 0) {
+        html += '<p style="color: var(--text-muted); text-align: center; padding: 20px;">No boxes in this unit</p>';
+      } else {
+        html += `<p style="margin-bottom: 12px; font-size: 0.9rem; color: var(--text-secondary);">${unitBoxes.length} box(es)</p>`;
+        html += '<div class="items-grid">';
+        unitBoxes.forEach(box => {
+          const itemCount = items.filter(i => i.box_id === box.id).length;
+          html += `
+            <div class="item-chip" style="cursor:pointer" onclick="closeModal('unitdetail-modal'); editBox('${box.id}');">
+              <div class="name">${box.name}</div>
+              <div class="id">${box.id} - ${itemCount} item(s)</div>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+      
+      document.getElementById('unitdetail-content').innerHTML = html;
+      document.getElementById('unitdetail-modal').classList.add('active');
     }
 
     function updateBoxSelect() {
@@ -601,7 +646,6 @@
       document.getElementById('unit-edit-id').value = '';
       document.getElementById('unit-id').value = '';
       document.getElementById('unit-name').value = '';
-      document.getElementById('unit-description').value = '';
       document.getElementById('unit-id').disabled = false;
       document.getElementById('unit-modal-title').textContent = 'Add Unit';
 
@@ -612,7 +656,6 @@
           document.getElementById('unit-id').value = u.id;
           document.getElementById('unit-id').disabled = true;
           document.getElementById('unit-name').value = u.name;
-          document.getElementById('unit-description').value = u.description || '';
           document.getElementById('unit-modal-title').textContent = 'Edit Unit';
         }
       }
@@ -626,10 +669,14 @@
       const editId = document.getElementById('unit-edit-id').value;
       const id = document.getElementById('unit-id').value.trim().toUpperCase();
       const name = document.getElementById('unit-name').value;
-      const description = document.getElementById('unit-description').value;
 
       if (!id || !name) {
         showToast('ID and name required', 'error');
+        return;
+      }
+
+      if (!id.startsWith('UNT')) {
+        showToast('Unit ID must start with UNT', 'error');
         return;
       }
 
@@ -639,7 +686,7 @@
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-        body: JSON.stringify({ id, name, description })
+        body: JSON.stringify({ id, name })
       });
 
       const data = await res.json();
@@ -720,13 +767,16 @@
 
     // Generate ID
     function generateId(type) {
-      const prefix = type === 'box' ? 'BOX' : 'ITM';
+      const prefixes = { box: 'BOX', item: 'ITM', unit: 'UNT' };
+      const prefix = prefixes[type];
       const randomNum = Math.floor(1000000000 + Math.random() * 9000000000);
       const id = prefix + randomNum;
       if (type === 'box') {
         document.getElementById('box-id').value = id;
-      } else {
+      } else if (type === 'item') {
         document.getElementById('item-id').value = id;
+      } else if (type === 'unit') {
+        document.getElementById('unit-id').value = id;
       }
     }
 
