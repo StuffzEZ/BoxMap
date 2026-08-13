@@ -25,7 +25,7 @@ docker run -d \
   -v boxmap-data:/app/data \
   -v boxmap-uploads:/app/uploads \
   -e ADMIN_PASSWORD=yourpassword \
-  ghcr.io/stuffsez/boxmap:latest
+  ghcr.io/stuffzez/boxmap:latest
 ```
 
 ### Docker Compose
@@ -37,7 +37,7 @@ version: '3.8'
 
 services:
   boxmap:
-    image: ghcr.io/stuffsez/boxmap:latest
+    image: ghcr.io/stuffzez/boxmap:latest
     container_name: boxmap
     ports:
       - "3000:3000"
