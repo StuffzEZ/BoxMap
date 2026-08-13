@@ -8,6 +8,7 @@
   <meta name="theme-color" content="#0f0f0f">
   <title>BoxMap - QR Scanner</title>
   <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body>
   <div class="container">
@@ -18,9 +19,8 @@
 
     <!-- Manual QR Input -->
     <div class="card">
-      <div class="card-title">Scan QR Code</div>
+      <div class="card-title">Enter QR Code</div>
       <div class="form-group">
-        <label>Enter QR Code</label>
         <div class="manual-input">
           <input type="text" id="qr-input" placeholder="BOX1234567890 or ITM1234567890">
           <button class="btn btn-primary" onclick="scanQR()">Scan</button>
@@ -28,17 +28,26 @@
       </div>
     </div>
 
-    <!-- Quick Select -->
+    <!-- QR Code Image Scanner -->
     <div class="card">
-      <div class="card-title">Quick Select</div>
-      <div class="form-group">
-        <label>Choose a box or item</label>
-        <select id="quick-select" onchange="quickSelect()">
-          <option value="">Select...</option>
-          <optgroup label="Boxes" id="boxes-group"></optgroup>
-          <optgroup label="Items" id="items-group"></optgroup>
-        </select>
+      <div class="card-title">Scan QR from Image</div>
+      <div class="image-upload-area" id="qr-upload-area">
+        <input type="file" id="qr-image-input" accept="image/*" capture="environment" style="display:none" onchange="handleQRImage(event)">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom: 12px; color: var(--text-muted)">
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+          <rect x="14" y="14" width="3" height="3"></rect>
+          <line x1="21" y1="14" x2="21" y2="14.01"></line>
+          <line x1="14" y1="21" x2="14" y2="21.01"></line>
+          <line x1="21" y1="21" x2="21" y2="21.01"></line>
+          <line x1="21" y1="17.5" x2="21" y2="17.5"></line>
+          <line x1="17.5" y1="21" x2="17.5" y2="21"></line>
+        </svg>
+        <p>Upload Image or Take Photo</p>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 8px">Point camera at a QR code</p>
       </div>
+      <canvas id="qr-canvas" style="display:none"></canvas>
     </div>
 
     <!-- Image Recognition (if enabled) -->
@@ -51,7 +60,7 @@
           <circle cx="8.5" cy="8.5" r="1.5"></circle>
           <polyline points="21 15 16 10 5 21"></polyline>
         </svg>
-        <p>Upload Image or Take Photo</p>
+        <p>Recognize Item from Photo</p>
         <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 8px">Items only</p>
       </div>
     </div>
@@ -69,54 +78,55 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    let boxes = [];
-    let items = [];
-
-    // Load data for quick select
-    async function loadData() {
-      try {
-        const [boxesRes, itemsRes, settingsRes] = await Promise.all([
-          fetch('/api/boxes'),
-          fetch('/api/items'),
-          fetch('/api/settings')
-        ]);
-        boxes = await boxesRes.json();
-        items = await itemsRes.json();
-        const settings = await settingsRes.json();
-
-        renderQuickSelect();
-
-        if (settings.imageRecognitionEnabled) {
+    // Check if image recognition is enabled
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(data => {
+        if (data.imageRecognitionEnabled) {
           document.getElementById('image-recognition-card').style.display = 'block';
         }
-      } catch (err) {
-        console.error('Error loading data:', err);
-      }
+      });
+
+    // QR Code Image Scanner
+    function handleQRImage(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        img.onload = function() {
+          const canvas = document.getElementById('qr-canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'dontInvert'
+          });
+
+          if (code) {
+            document.getElementById('qr-input').value = code.data;
+            scanQR();
+            showToast('QR code detected: ' + code.data, 'success');
+          } else {
+            showToast('No QR code found in image', 'error');
+          }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+      event.target.value = '';
     }
 
-    function renderQuickSelect() {
-      const boxesGroup = document.getElementById('boxes-group');
-      const itemsGroup = document.getElementById('items-group');
+    document.getElementById('qr-upload-area')?.addEventListener('click', () => {
+      document.getElementById('qr-image-input').click();
+    });
 
-      boxesGroup.innerHTML = boxes.map(b => 
-        `<option value="${b.id}">${b.name} (${b.id})</option>`
-      ).join('');
-
-      itemsGroup.innerHTML = items.map(i => 
-        `<option value="${i.id}">${i.name} (${i.id})</option>`
-      ).join('');
-    }
-
-    function quickSelect() {
-      const select = document.getElementById('quick-select');
-      const id = select.value;
-      if (!id) return;
-
-      document.getElementById('qr-input').value = id;
-      scanQR();
-      select.value = '';
-    }
-
+    // Scan QR
     async function scanQR() {
       const input = document.getElementById('qr-input').value.trim();
       if (!input) {
@@ -239,9 +249,6 @@
       toast.className = `toast show ${type}`;
       setTimeout(() => toast.className = 'toast', 3000);
     }
-
-    // Initialize
-    loadData();
   </script>
 </body>
 </html>

@@ -568,6 +568,17 @@ td {
   min-width: calc(50% - 4px);
 }
 
+/* Quick Select List */
+#quickselect-list .item-chip {
+  transition: var(--transition);
+}
+
+#quickselect-list .item-chip:active {
+  transform: scale(0.98);
+  background: var(--bg-secondary);
+  border-color: var(--accent);
+}
+
 /* Responsive */
 @media (min-width: 640px) {
   .container {

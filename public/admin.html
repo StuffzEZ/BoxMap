@@ -99,7 +99,10 @@
         <div class="card-title">Generate Labels</div>
         <div class="form-group">
           <label>Select IDs (comma separated)</label>
-          <input type="text" id="label-ids" placeholder="BOX1234567890, ITM1234567890">
+          <div class="manual-input">
+            <input type="text" id="label-ids" placeholder="BOX1234567890, ITM1234567890">
+            <button type="button" class="btn btn-secondary" onclick="openQuickSelect('label-ids')">Browse</button>
+          </div>
         </div>
         <div class="label-controls">
           <div class="form-group">
@@ -209,6 +212,20 @@
         </div>
         <button type="submit" class="btn btn-primary btn-full">Save Item</button>
       </form>
+    </div>
+  </div>
+
+  <!-- Quick Select Modal -->
+  <div class="modal-overlay" id="quickselect-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Quick Select</h2>
+        <button class="modal-close" onclick="closeModal('quickselect-modal')">&times;</button>
+      </div>
+      <div class="form-group">
+        <input type="text" id="quicksearch-input" placeholder="Search..." oninput="filterQuickSelect()">
+      </div>
+      <div id="quickselect-list" style="max-height: 50vh; overflow-y: auto;"></div>
     </div>
   </div>
 
@@ -562,6 +579,76 @@
       } else {
         document.getElementById('item-id').value = id;
       }
+    }
+
+    // Quick Select Modal
+    let quickSelectTarget = null;
+
+    function openQuickSelect(target) {
+      quickSelectTarget = target;
+      document.getElementById('quicksearch-input').value = '';
+      renderQuickSelectList();
+      document.getElementById('quickselect-modal').classList.add('active');
+    }
+
+    function renderQuickSelectList(filter = '') {
+      const list = document.getElementById('quickselect-list');
+      const filterLower = filter.toLowerCase();
+
+      const filteredBoxes = boxes.filter(b => 
+        b.name.toLowerCase().includes(filterLower) || b.id.toLowerCase().includes(filterLower)
+      );
+      const filteredItems = items.filter(i => 
+        i.name.toLowerCase().includes(filterLower) || i.id.toLowerCase().includes(filterLower)
+      );
+
+      let html = '';
+
+      if (filteredBoxes.length > 0) {
+        html += '<div style="margin-bottom: 12px"><div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-left: 4px;">Boxes</div>';
+        html += filteredBoxes.map(b => `
+          <div class="item-chip" onclick="selectQuickItem('${b.id}')" style="margin-bottom: 8px; cursor: pointer;">
+            <div class="name">${b.name}</div>
+            <div class="id">${b.id}</div>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      if (filteredItems.length > 0) {
+        html += '<div><div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-left: 4px;">Items</div>';
+        html += filteredItems.map(i => `
+          <div class="item-chip" onclick="selectQuickItem('${i.id}')" style="margin-bottom: 8px; cursor: pointer;">
+            <div class="name">${i.name}</div>
+            <div class="id">${i.id}${i.box_id ? ' • Box: ' + i.box_id : ''}</div>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      if (!html) {
+        html = '<p style="text-align: center; color: var(--text-muted); padding: 20px;">No results found</p>';
+      }
+
+      list.innerHTML = html;
+    }
+
+    function filterQuickSelect() {
+      const filter = document.getElementById('quicksearch-input').value;
+      renderQuickSelectList(filter);
+    }
+
+    function selectQuickItem(id) {
+      if (quickSelectTarget === 'label-ids') {
+        const input = document.getElementById('label-ids');
+        const current = input.value.trim();
+        if (current) {
+          input.value = current + ', ' + id;
+        } else {
+          input.value = id;
+        }
+      }
+      closeModal('quickselect-modal');
     }
 
     // Toast
