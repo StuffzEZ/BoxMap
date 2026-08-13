@@ -419,7 +419,11 @@ app.get('/api/labels/pdf', authenticate, async (req, res) => {
     const y = tmpl.marginTop + row * (tmpl.labelHeight + tmpl.rowGap);
 
     if (tmpl.hasBorder) {
+      doc.save();
+      doc.lineWidth(0.8);
+      doc.strokeColor('#000000');
       doc.rect(x, y, tmpl.labelWidth, tmpl.labelHeight).stroke();
+      doc.restore();
     }
 
     // Get data
@@ -437,16 +441,151 @@ app.get('/api/labels/pdf', authenticate, async (req, res) => {
     try {
       const urlToEncode = `${APP_URL.replace(/\/$/, '')}?id=${encodeURIComponent(id)}`;
       const qrBuffer = await QRCode.toBuffer(urlToEncode, { width: tmpl.qrSize, margin: 1, color: { dark: '#000000', light: '#FFFFFF' } });
-      // Draw QR code on left side
-      doc.image(qrBuffer, x + 5, y + (tmpl.labelHeight - tmpl.qrSize) / 2, { width: tmpl.qrSize, height: tmpl.qrSize });
+      // Draw QR code on left side with small inner padding
+      const qrPadding = 6;
+      const qrX = x + qrPadding;
+      const qrY = y + (tmpl.labelHeight - tmpl.qrSize) / 2;
+      doc.image(qrBuffer, qrX, qrY, { width: tmpl.qrSize, height: tmpl.qrSize });
     } catch (err) {
       doc.fontSize(6).font('Helvetica');
-      doc.text('[QR]', x + 5, y + 5, { width: tmpl.qrSize });
+      doc.text('[QR]', x + 6, y + 6, { width: tmpl.qrSize });
     }
 
-    // Info on right side
-    const textX = x + tmpl.qrSize + 12;
-    const textWidth = tmpl.labelWidth - tmpl.qrSize - 17;
+    // Info on right side (calculate consistent paddings)
+    const innerPadding = 8;
+    const textX = x + 6 + tmpl.qrSize + innerPadding; // qrPadding + qrSize + innerPadding
+    const textWidth = tmpl.labelWidth - (tmpl.qrSize + innerPadding + 6 + 8); // right padding
+
+    if (data) {
+      doc.fontSize(nameFontSize).font('Helvetica-Bold');
+      doc.text(data.name, textX, y + 5, { width: textWidth, continued: false });
+
+      doc.fontSize(idFontSize).font('Helvetica');
+      doc.text(id, textX, y + 5 + nameFontSize + 2, { width: textWidth });
+
+      if (descFontSize > 0 && data.description) {
+        doc.fontSize(descFontSize).font('Helvetica');
+        doc.text(data.description || '', textX, y + 5 + nameFontSize + idFontSize + 6, { width: textWidth, height: tmpl.labelHeight - (nameFontSize + idFontSize + 12) });
+      }
+
+      if (type === 'ITEM' && data.location) {
+        doc.fontSize(Math.max(6, idFontSize - 1)).font('Helvetica-Oblique');
+        doc.text(data.location, textX, y + tmpl.labelHeight - 14, { width: textWidth });
+      }
+
+      // Optionally include the item's photo (scaled) on the right if requested and available
+      if (useImage && data.image) {
+        try {
+          const imgPath = path.join(__dirname, data.image);
+          if (fs.existsSync(imgPath)) {
+            const imgX = textX + textWidth - 40;
+            const imgY = y + (tmpl.labelHeight - 40) / 2;
+            doc.image(imgPath, imgX, imgY, { width: 36, height: 36 });
+          }
+        } catch (e) {
+          // ignore image errors
+        }
+      }
+    } else {
+      doc.fontSize(7).font('Helvetica');
+      doc.text(id, textX, y + 5, { width: textWidth });
+    }
+
+    labelIndex++;
+  }
+
+  doc.end();
+});
+
+// Also support POST for PDF generation so clients can send auth in headers and receive blob
+app.post('/api/labels/pdf', authenticate, async (req, res) => {
+  const { ids, template, start_index, fontName, fontSizeName, fontSizeId, showDescription, includeImage } = req.body || {};
+
+  if (!ids) {
+    return res.status(400).json({ error: 'IDs are required' });
+  }
+
+  const idList = ids.split(',').map(id => id.trim().toUpperCase());
+
+  // Template configurations (sizes in PDF points for US Letter 612x792)
+  const templates = {
+    'avery-5160': { width: 612, height: 792, labelsPerSheet: 30, cols: 3, rows: 10, labelWidth: 180, labelHeight: 54, marginLeft: 18, marginTop: 36, colGap: 9, rowGap: 0, hasBorder: false, qrSize: 40 },
+    'avery-5161': { width: 612, height: 792, labelsPerSheet: 40, cols: 4, rows: 10, labelWidth: 136, labelHeight: 54, marginLeft: 18, marginTop: 36, colGap: 9, rowGap: 0, hasBorder: false, qrSize: 36 },
+    'avery-5162': { width: 612, height: 792, labelsPerSheet: 21, cols: 3, rows: 7, labelWidth: 180, labelHeight: 72, marginLeft: 18, marginTop: 54, colGap: 9, rowGap: 18, hasBorder: false, qrSize: 50 },
+    'dymo-30252': { width: 612, height: 792, labelsPerSheet: 14, cols: 2, rows: 7, labelWidth: 252, labelHeight: 72, marginLeft: 72, marginTop: 36, colGap: 36, rowGap: 18, hasBorder: true, qrSize: 55 },
+    'borderless-14': { width: 612, height: 792, labelsPerSheet: 14, cols: 2, rows: 7, labelWidth: 270, labelHeight: 72, marginLeft: 36, marginTop: 36, colGap: 18, rowGap: 18, hasBorder: false, qrSize: 55 },
+    'address-2x8': { width: 612, height: 792, labelsPerSheet: 16, cols: 2, rows: 8, labelWidth: 270, labelHeight: 90, marginLeft: 36, marginTop: 30, colGap: 18, rowGap: 12, hasBorder: false, qrSize: 60 },
+    'small-3x8': { width: 612, height: 792, labelsPerSheet: 24, cols: 3, rows: 8, labelWidth: 172, labelHeight: 90, marginLeft: 18, marginTop: 30, colGap: 6, rowGap: 12, hasBorder: false, qrSize: 48 }
+  };
+
+  const tmpl = templates[template] || templates['dymo-30252'];
+  const startIndex = parseInt(start_index) || 0;
+
+  // Formatting options
+  function nineOrDefault(val, def) { return isNaN(val) ? def : val; }
+  const nameFontSize = nineOrDefault(parseInt(fontSizeName), 9);
+  const idFontSize = nineOrDefault(parseInt(fontSizeId), 7);
+  const descFontSize = showDescription === 'false' ? 0 : (nineOrDefault(parseInt(req.body.fontSizeDesc), 6));
+  const useImage = includeImage === 'true' || includeImage === true;
+
+  const doc = new PDFDocument({ size: [tmpl.width, tmpl.height], margin: 0 });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename=labels.pdf');
+  doc.pipe(res);
+
+  let labelIndex = startIndex || 0;
+
+  for (let i = 0; i < idList.length; i++) {
+    const id = idList[i];
+
+    // Handle pagination: add a new page for each sheet when needed
+    const pageLabelIndex = labelIndex % tmpl.labelsPerSheet;
+    if (labelIndex > 0 && pageLabelIndex === 0) {
+      doc.addPage({ size: [tmpl.width, tmpl.height], margin: 0 });
+    }
+
+    const col = pageLabelIndex % tmpl.cols;
+    const row = Math.floor(pageLabelIndex / tmpl.cols);
+    const x = tmpl.marginLeft + col * (tmpl.labelWidth + tmpl.colGap);
+    const y = tmpl.marginTop + row * (tmpl.labelHeight + tmpl.rowGap);
+
+    if (tmpl.hasBorder) {
+      doc.save();
+      doc.lineWidth(0.8);
+      doc.strokeColor('#000000');
+      doc.rect(x, y, tmpl.labelWidth, tmpl.labelHeight).stroke();
+      doc.restore();
+    }
+
+    // Get data
+    let data = null;
+    let type = '';
+    if (id.startsWith('BOX')) {
+      data = db.prepare('SELECT * FROM boxes WHERE id = ?').get(id);
+      type = 'BOX';
+    } else if (id.startsWith('ITM')) {
+      data = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+      type = 'ITEM';
+    }
+
+    // Generate QR code (encode full app URL so external scanners open the app)
+    try {
+      const urlToEncode = `${APP_URL.replace(/\/$/, '')}?id=${encodeURIComponent(id)}`;
+      const qrBuffer = await QRCode.toBuffer(urlToEncode, { width: tmpl.qrSize, margin: 1, color: { dark: '#000000', light: '#FFFFFF' } });
+      const qrPadding = 6;
+      const qrX = x + qrPadding;
+      const qrY = y + (tmpl.labelHeight - tmpl.qrSize) / 2;
+      doc.image(qrBuffer, qrX, qrY, { width: tmpl.qrSize, height: tmpl.qrSize });
+    } catch (err) {
+      doc.fontSize(6).font('Helvetica');
+      doc.text('[QR]', x + 6, y + 6, { width: tmpl.qrSize });
+    }
+
+    // Info on right side (calculate consistent paddings)
+    const innerPadding = 8;
+    const textX = x + 6 + tmpl.qrSize + innerPadding; // qrPadding + qrSize + innerPadding
+    const textWidth = tmpl.labelWidth - (tmpl.qrSize + innerPadding + 6 + 8); // right padding
 
     if (data) {
       doc.fontSize(nameFontSize).font('Helvetica-Bold');

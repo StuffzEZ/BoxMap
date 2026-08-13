@@ -582,8 +582,37 @@
         showToast('Please select IDs to generate labels', 'error');
         return;
       }
-      const url = `/api/labels/pdf?ids=${encodeURIComponent(ids)}&template=${template}&start_index=${startIndex}&fontSizeName=${encodeURIComponent(fontSizeName)}&fontSizeId=${encodeURIComponent(fontSizeId)}&fontSizeDesc=${encodeURIComponent(fontSizeDesc)}&showDescription=${showDesc}&includeImage=${includeImage}&password=${password}`;
-      window.open(url, '_blank');
+      const body = {
+        ids,
+        template,
+        start_index: parseInt(startIndex) || 0,
+        fontSizeName: parseInt(fontSizeName) || 9,
+        fontSizeId: parseInt(fontSizeId) || 7,
+        fontSizeDesc: parseInt(fontSizeDesc) || 6,
+        showDescription: !!showDesc,
+        includeImage: !!includeImage
+      };
+
+      fetch('/api/labels/pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': password
+        },
+        body: JSON.stringify(body)
+      })
+      .then(async res => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || 'Failed to generate PDF', 'error');
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      })
+      .catch(() => showToast('Network error generating PDF', 'error'));
     }
 
     // Generate ID

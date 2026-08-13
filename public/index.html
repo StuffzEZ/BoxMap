@@ -87,6 +87,23 @@
         }
       });
 
+    // If page loaded with ?id=... from external QR open, auto-scan that id
+    (function autoScanIfId() {
+      try {
+        const run = () => {
+          const params = new URLSearchParams(window.location.search);
+          const id = params.get('id');
+          if (id) {
+            document.getElementById('qr-input').value = id.trim();
+            setTimeout(() => scanQR(), 250);
+          }
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+      } catch (e) {
+        // ignore
+      }
+    })();
+
     // QR Code Image Scanner
     function handleQRImage(event) {
       const file = event.target.files[0];
