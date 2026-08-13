@@ -523,6 +523,72 @@ td {
   animation: slideUp 0.3s ease;
 }
 
+/* Found popup (bottom sheet) */
+#found-popup {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 2500;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  width: calc(100% - 32px);
+  max-width: 820px;
+}
+
+#found-popup .found-inner {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+#found-popup .found-img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#found-popup .found-body {
+  flex: 1;
+}
+
+#found-popup .found-title {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+#found-popup .found-sub {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+#found-popup .found-meta {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
+#found-popup .found-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+#found-popup .found-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
 .toast.success {
   border-color: var(--success);
 }

@@ -292,39 +292,59 @@
     }
 
     function showFoundPopup(obj) {
-      // create overlay
+      // remove existing
       const existing = document.getElementById('found-popup');
       if (existing) existing.remove();
-      const overlay = document.createElement('div');
-      overlay.id = 'found-popup';
-      overlay.style.position = 'fixed';
-      overlay.style.left = '50%';
-      overlay.style.top = '10%';
-      overlay.style.transform = 'translateX(-50%)';
-      overlay.style.zIndex = 9999;
-      overlay.style.background = 'linear-gradient(180deg,#fff,#f7f7f7)';
-      overlay.style.border = '1px solid #ccc';
-      overlay.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
-      overlay.style.padding = '12px 14px';
-      overlay.style.borderRadius = '8px';
-      overlay.style.minWidth = '260px';
-      overlay.style.maxWidth = '90%';
 
-      const html = `
-        <div style="display:flex;align-items:center;gap:12px">
-          ${obj.item && obj.item.image ? `<img src="${obj.item.image}" style="width:64px;height:64px;object-fit:cover;border-radius:6px">` : ''}
-          <div>
-            <div style="font-weight:700">${obj.item.name}</div>
-            <div style="font-size:0.9rem;color:#333">${obj.item.id}</div>
-            <div style="font-size:0.85rem;color:#666;margin-top:6px">Box: ${obj.box ? obj.box.name + ' ('+obj.box.id+')' : 'Not assigned'}</div>
-            <div style="font-size:0.85rem;color:#666">Unit: ${obj.unit ? obj.unit.name + ' ('+obj.unit.id+')' : '-'}</div>
+      const container = document.createElement('div');
+      container.id = 'found-popup';
+
+      const imgHtml = obj.item && obj.item.image ? `<img src="${obj.item.image}" class="found-img" alt="${obj.item.name}">` : '';
+      const boxLink = obj.box ? `<a href="#" class="found-link" data-id="${obj.box.id}">${obj.box.name} (${obj.box.id})</a>` : 'Not assigned';
+      const unitLink = obj.unit ? `<a href="#" class="found-link" data-unit="${obj.unit.id}">${obj.unit.name} (${obj.unit.id})</a>` : '-';
+
+      container.innerHTML = `
+        <div class="found-inner">
+          ${imgHtml}
+          <div class="found-body">
+            <div class="found-title">${escapeHtml(obj.item.name)}</div>
+            <div class="found-sub">${escapeHtml(obj.item.id)}</div>
+            <div class="found-meta">Box: ${boxLink}</div>
+            <div class="found-meta">Unit: ${unitLink}</div>
           </div>
+          <button class="found-close" aria-label="Close">&times;</button>
         </div>
       `;
-      overlay.innerHTML = html;
-      overlay.addEventListener('click', () => overlay.remove());
-      document.body.appendChild(overlay);
-      setTimeout(() => { try { overlay.remove(); } catch(e){} }, 6000);
+
+      document.body.appendChild(container);
+
+      // wire links
+      container.querySelectorAll('.found-link').forEach(a => {
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          const bid = a.getAttribute('data-id') || a.getAttribute('data-unit');
+          if (bid) {
+            document.getElementById('qr-input').value = bid;
+            scanQR();
+          }
+        });
+      });
+
+      // close button
+      container.querySelector('.found-close')?.addEventListener('click', () => container.remove());
+
+      // scroll to bottom so user sees it
+      try {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      } catch (e) {}
+
+      // auto-dismiss
+      setTimeout(() => { try { container.remove(); } catch (e) {} }, 8000);
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     }
 
     // Image Recognition
